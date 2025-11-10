@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Work Timer Options</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 24px;
+      }
+
+      main {
+        max-width: 480px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+
+      input[type="text"] {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 12px;
+        box-sizing: border-box;
+      }
+
+      button {
+        padding: 8px 16px;
+        font-size: 14px;
+      }
+
+      #saved-url {
+        margin-bottom: 16px;
+        font-size: 14px;
+      }
+
+      #status {
+        margin-top: 8px;
+        min-height: 1em;
+        font-size: 12px;
+        color: #0b57d0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Work Timer Options</h1>
+      <div id="saved-url">No URL saved yet.</div>
+      <form id="url-form">
+        <label for="url-input">Matches URL</label>
+        <input
+          id="url-input"
+          name="url"
+          type="text"
+          placeholder="https://example.com/*"
+        />
+        <button type="submit">Save</button>
+      </form>
+      <div id="status" role="status" aria-live="polite"></div>
+    </main>
+    <script src="scripts-js/options.js"></script>
+  </body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "Work Timer",
+  "description": "Work Timer tracks the amount of time it takes to complete tasks and data in relation to time",
+  "version": "1.0",
+  "manifest_version": 3,
+  "options_page": "options.html",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["scripts-js/content.js"]
+    }
+  ]
+}
