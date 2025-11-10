@@ -72,7 +72,7 @@ const getStoredMatches = () => new Promise((resolve) => {
 const currentUrl = window.location.href;
 const evaluateMatches = (patterns) => {
     if (patterns.some((pattern) => doesUrlMatchPattern(currentUrl, pattern))) {
-        console.log("timer started");
+        window.workTimer?.startTimer?.();
     }
 };
 const initialize = async () => {

@@ -125,7 +125,7 @@ const currentUrl = window.location.href;
 
 const evaluateMatches = (patterns: string[]): void => {
   if (patterns.some((pattern) => doesUrlMatchPattern(currentUrl, pattern))) {
-    console.log("timer started");
+    window.workTimer?.startTimer?.();
   }
 };
 
