@@ -11,6 +11,11 @@ type WorkSummaryPayload = {
   "Work Time": string;
 };
 
+type StorageChangeMap = Record<
+  string,
+  { newValue?: unknown; oldValue?: unknown }
+>;
+
 const popupStatusElement = document.getElementById("status");
 const popupSubmitButton = document.getElementById(
   "submit-button"
@@ -20,6 +25,9 @@ const popupResetButton = document.getElementById(
 ) as HTMLButtonElement | null;
 const popupProjectTitleElement = document.getElementById("project-title");
 const popupWorkTimeElement = document.getElementById("work-time");
+
+let currentSummary: StoredSummary = { projectTitle: null, durationMs: 0 };
+let hasAttachedStorageChangeListener = false;
 
 const formatDurationForSheetValue = (durationMs: number): string => {
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
@@ -176,6 +184,11 @@ const sendSummaryToSheet = async (
 };
 
 const updatePreview = (summary: StoredSummary): void => {
+  currentSummary = {
+    projectTitle: summary.projectTitle,
+    durationMs: summary.durationMs,
+  };
+
   if (popupProjectTitleElement) {
     popupProjectTitleElement.textContent = summary.projectTitle ?? "—";
   }
@@ -185,6 +198,113 @@ const updatePreview = (summary: StoredSummary): void => {
       summary.durationMs
     );
   }
+};
+
+const handleStorageChange = (
+  changes: StorageChangeMap,
+  areaName: string
+): void => {
+  if (areaName !== "local") {
+    return;
+  }
+
+  let shouldUpdate = false;
+  let nextSummary = { ...currentSummary };
+
+  if (Object.prototype.hasOwnProperty.call(changes, "lastSessionDurationMs")) {
+    const durationChange = changes.lastSessionDurationMs;
+    const rawDuration = durationChange?.newValue;
+
+    if (typeof rawDuration === "number" && Number.isFinite(rawDuration)) {
+      nextSummary = {
+        ...nextSummary,
+        durationMs: Math.max(0, rawDuration),
+      };
+      shouldUpdate = true;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(changes, "projectTitle")) {
+    const titleChange = changes.projectTitle;
+    const rawTitle = titleChange?.newValue;
+    const sanitizedTitle =
+      typeof rawTitle === "string" && rawTitle.trim().length > 0
+        ? rawTitle.trim()
+        : null;
+
+    nextSummary = {
+      ...nextSummary,
+      projectTitle: sanitizedTitle,
+    };
+    shouldUpdate = true;
+  }
+
+  if (shouldUpdate) {
+    updatePreview(nextSummary);
+  }
+};
+
+type StorageOnChanged = {
+  addListener?: (
+    callback: (changes: StorageChangeMap, areaName: string) => void
+  ) => void;
+  removeListener?: (
+    callback: (changes: StorageChangeMap, areaName: string) => void
+  ) => void;
+};
+
+const getStorageOnChanged = (): StorageOnChanged | undefined => {
+  if (typeof chrome === "undefined") {
+    return undefined;
+  }
+
+  const storage = (
+    chrome as {
+      storage?: { onChanged?: StorageOnChanged };
+    }
+  ).storage;
+
+  if (!storage) {
+    return undefined;
+  }
+
+  return storage.onChanged ?? undefined;
+};
+
+const detachStorageChangeListener = (): void => {
+  if (!hasAttachedStorageChangeListener || typeof chrome === "undefined") {
+    return;
+  }
+
+  const storageOnChanged = getStorageOnChanged();
+
+  if (
+    !storageOnChanged ||
+    typeof storageOnChanged.removeListener !== "function"
+  ) {
+    return;
+  }
+
+  storageOnChanged.removeListener(handleStorageChange);
+  hasAttachedStorageChangeListener = false;
+};
+
+const attachStorageChangeListener = (): void => {
+  if (hasAttachedStorageChangeListener || typeof chrome === "undefined") {
+    return;
+  }
+
+  const storageOnChanged = getStorageOnChanged();
+
+  if (!storageOnChanged || typeof storageOnChanged.addListener !== "function") {
+    return;
+  }
+
+  storageOnChanged.addListener(handleStorageChange);
+  hasAttachedStorageChangeListener = true;
+  window.addEventListener("unload", detachStorageChangeListener, {
+    once: true,
+  });
 };
 
 const handleSubmit = async (): Promise<void> => {
@@ -254,6 +374,7 @@ const initializePopup = async (): Promise<void> => {
 
   const summary = await getStoredSummary();
   updatePreview(summary);
+  attachStorageChangeListener();
 
   if (popupSubmitButton) {
     popupSubmitButton.addEventListener("click", () => {

@@ -5,6 +5,8 @@ const popupSubmitButton = document.getElementById("submit-button");
 const popupResetButton = document.getElementById("reset-button");
 const popupProjectTitleElement = document.getElementById("project-title");
 const popupWorkTimeElement = document.getElementById("work-time");
+let currentSummary = { projectTitle: null, durationMs: 0 };
+let hasAttachedStorageChangeListener = false;
 const formatDurationForSheetValue = (durationMs) => {
     if (!Number.isFinite(durationMs) || durationMs <= 0) {
         return "00:00:00";
@@ -109,12 +111,64 @@ const sendSummaryToSheet = async (payload) => {
     }
 };
 const updatePreview = (summary) => {
+    currentSummary = {
+        projectTitle: summary.projectTitle,
+        durationMs: summary.durationMs,
+    };
     if (popupProjectTitleElement) {
         popupProjectTitleElement.textContent = summary.projectTitle ?? "—";
     }
     if (popupWorkTimeElement) {
         popupWorkTimeElement.textContent = formatDurationForSheetValue(summary.durationMs);
     }
+};
+const handleStorageChange = (changes, areaName) => {
+    if (areaName !== "local") {
+        return;
+    }
+    let shouldUpdate = false;
+    let nextSummary = Object.assign({}, currentSummary);
+    if (Object.prototype.hasOwnProperty.call(changes, "lastSessionDurationMs")) {
+        const durationChange = changes.lastSessionDurationMs;
+        const rawDuration = durationChange?.newValue;
+        if (typeof rawDuration === "number" && Number.isFinite(rawDuration)) {
+            nextSummary = Object.assign(Object.assign({}, nextSummary), { durationMs: Math.max(0, rawDuration) });
+            shouldUpdate = true;
+        }
+    }
+    if (Object.prototype.hasOwnProperty.call(changes, "projectTitle")) {
+        const titleChange = changes.projectTitle;
+        const rawTitle = titleChange?.newValue;
+        const sanitizedTitle = typeof rawTitle === "string" && rawTitle.trim().length > 0
+            ? rawTitle.trim()
+            : null;
+        nextSummary = Object.assign(Object.assign({}, nextSummary), { projectTitle: sanitizedTitle });
+        shouldUpdate = true;
+    }
+    if (shouldUpdate) {
+        updatePreview(nextSummary);
+    }
+};
+const detachStorageChangeListener = () => {
+    if (!hasAttachedStorageChangeListener ||
+        typeof chrome === "undefined" ||
+        !chrome.storage?.onChanged ||
+        typeof chrome.storage.onChanged.removeListener !== "function") {
+        return;
+    }
+    chrome.storage.onChanged.removeListener(handleStorageChange);
+    hasAttachedStorageChangeListener = false;
+};
+const attachStorageChangeListener = () => {
+    if (hasAttachedStorageChangeListener ||
+        typeof chrome === "undefined" ||
+        !chrome.storage?.onChanged ||
+        typeof chrome.storage.onChanged.addListener !== "function") {
+        return;
+    }
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    hasAttachedStorageChangeListener = true;
+    window.addEventListener("unload", detachStorageChangeListener, { once: true });
 };
 const handleSubmit = async () => {
     if (popupSubmitButton) {
@@ -177,6 +231,7 @@ const initializePopup = async () => {
     clearPopupStatus();
     const summary = await getStoredSummary();
     updatePreview(summary);
+    attachStorageChangeListener();
     if (popupSubmitButton) {
         popupSubmitButton.addEventListener("click", () => {
             void handleSubmit();
