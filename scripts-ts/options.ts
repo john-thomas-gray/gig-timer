@@ -3,6 +3,7 @@ type AdditionalFieldName =
   | "client"
   | "studio"
   | "genre"
+  | "season"
   | "subtitles"
   | "runtime"
   | "rate"
@@ -21,7 +22,7 @@ type AdditionalFieldConfig = {
   type?: string;
   placeholder?: string;
   required?: boolean;
-  defaultValue?: string;
+  defaultValue?: any;
   getDefaultValue?: () => string;
 };
 
@@ -59,6 +60,13 @@ const additionalFieldConfigs: AdditionalFieldConfig[] = [
     id: "genre-input",
     label: "Genre",
     name: "genre",
+  },
+  {
+    id: "season-input",
+    label: "Season",
+    name: "season",
+    required: false,
+    defaultValue: undefined,
   },
   {
     id: "subtitles-input",
@@ -105,6 +113,7 @@ const createDefaultStoredOptions = (): StoredOptions => ({
   client: "",
   studio: "",
   genre: "",
+  season: "",
   subtitles: "No",
   runtime: "",
   rate: "",
@@ -253,6 +262,11 @@ const loadSavedOptions = (): void => {
         storageResult,
         "genre",
         defaultOptions.genre
+      ),
+      season: normalizeStoredOption(
+        storageResult,
+        "season",
+        defaultOptions.season
       ),
       subtitles: normalizeStoredOption(
         storageResult,

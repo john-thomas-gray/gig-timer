@@ -4,6 +4,10 @@
   "version": "1.0",
   "manifest_version": 3,
   "options_page": "options.html",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Work Timer"
+  },
   "permissions": ["storage"],
   "content_scripts": [
     {

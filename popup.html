@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Work Timer</title>
+    <style>
+      body {
+        min-width: 220px;
+        margin: 0;
+        padding: 16px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background-color: #f5f6f8;
+        color: #1f2933;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+
+      .summary {
+        margin-bottom: 12px;
+        padding: 12px;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+      }
+
+      .summary-item {
+        margin: 4px 0;
+      }
+
+      .button-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        padding: 10px;
+        border: none;
+        border-radius: 6px;
+        background-color: #2563eb;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+      }
+
+      button:hover {
+        background-color: #1d4ed8;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.7;
+      }
+
+      button.secondary {
+        background-color: #e5e7eb;
+        color: #1f2933;
+      }
+
+      button.secondary:hover {
+        background-color: #d1d5db;
+      }
+
+      #status {
+        margin-top: 8px;
+        min-height: 18px;
+        font-size: 13px;
+      }
+
+      #status[data-status="error"] {
+        color: #dc2626;
+      }
+
+      #status[data-status="success"] {
+        color: #047857;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Work Timer</h1>
+    <div class="summary">
+      <div class="summary-item">
+        <strong>Project Title:</strong> <span id="project-title">—</span>
+      </div>
+      <div class="summary-item">
+        <strong>Work Time:</strong> <span id="work-time">00:00:00</span>
+      </div>
+    </div>
+    <div class="button-group">
+      <button id="submit-button" type="button">Send to Sheet</button>
+      <button id="reset-button" type="button" class="secondary">
+        Reset Timer
+      </button>
+    </div>
+    <div id="status" role="status"></div>
+    <script src="scripts-js/popup.js"></script>
+  </body>
+</html>

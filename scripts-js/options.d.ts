@@ -1,4 +1,4 @@
-type AdditionalFieldName = "projectTitle" | "client" | "studio" | "genre" | "subtitles" | "runtime" | "rate" | "dateBooked";
+type AdditionalFieldName = "projectTitle" | "client" | "studio" | "genre" | "season" | "subtitles" | "runtime" | "rate" | "dateBooked";
 type StoredOptions = {
     matchesUrl: string;
 } & Record<AdditionalFieldName, string>;
@@ -10,7 +10,7 @@ type AdditionalFieldConfig = {
     type?: string;
     placeholder?: string;
     required?: boolean;
-    defaultValue?: string;
+    defaultValue?: any;
     getDefaultValue?: () => string;
 };
 declare const savedUrlElement: HTMLElement | null;
