@@ -60,6 +60,12 @@ type AdditionalFieldConfig = {
 };
 
 const savedUrlElement = document.getElementById("saved-url");
+const assignmentsFormElement = document.getElementById(
+  "assignments-form"
+) as HTMLFormElement | null;
+const assignmentsInputElement = document.getElementById(
+  "assignments-input"
+) as HTMLInputElement | null;
 const inputElement = document.getElementById(
   "url-input"
 ) as HTMLInputElement | null;
@@ -75,6 +81,7 @@ const deleteButtonElement = document.getElementById(
 
 const OPTIONS_STORAGE_SETS_KEY = "savedOptionSets";
 const OPTIONS_PROJECT_DURATIONS_KEY = "projectDurations";
+const ASSIGNMENTS_PAGE_URL_KEY = "assignmentsPageUrl";
 
 const getCurrentMonthYear = (): string => {
   const now = new Date();
@@ -151,6 +158,7 @@ let cachedOptionSets: StoredOptionsCollection = [];
 let selectedProjectTitleKey: string | null = null;
 let hasAttachedStorageListener = false;
 let isPersistingActiveDataset = false;
+let cachedAssignmentsUrl = "";
 
 const formatDurationForDisplay = (durationMs: number): string => {
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
@@ -211,6 +219,17 @@ const normalizeOptionsDurationMap = (raw: unknown): ProjectDurationMap => {
   }, {});
 };
 
+const sanitizeAssignmentsUrl = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+const setAssignmentsInputValue = (value: string): void => {
+  if (!assignmentsInputElement) {
+    return;
+  }
+
+  assignmentsInputElement.value = value;
+};
+
 const getProjectDuration = (projectTitle: string): Promise<number> =>
   new Promise((resolve) => {
     const trimmedTitle = projectTitle.trim();
@@ -267,6 +286,63 @@ const refreshWorkTimeForSelection = async (): Promise<void> => {
 
   const durationMs = await getProjectDuration(selectedSet.projectTitle);
   updateWorkTimeDisplay(durationMs);
+};
+
+const loadAssignmentsUrl = (): void => {
+  const applyValue = (value: string): void => {
+    cachedAssignmentsUrl = value;
+    setAssignmentsInputValue(value);
+  };
+
+  if (
+    typeof chrome === "undefined" ||
+    !chrome.storage?.local ||
+    typeof chrome.storage.local.get !== "function"
+  ) {
+    applyValue(cachedAssignmentsUrl);
+    return;
+  }
+
+  chrome.storage.local.get([ASSIGNMENTS_PAGE_URL_KEY], (result) => {
+    if (chrome?.runtime?.lastError) {
+      applyValue(cachedAssignmentsUrl);
+      return;
+    }
+
+    const storedValue = sanitizeAssignmentsUrl(
+      result?.[ASSIGNMENTS_PAGE_URL_KEY]
+    );
+    applyValue(storedValue);
+  });
+};
+
+const saveAssignmentsUrl = (rawValue: string): void => {
+  const trimmedValue = rawValue.trim();
+
+  if (
+    typeof chrome === "undefined" ||
+    !chrome.storage?.local ||
+    typeof chrome.storage.local.set !== "function"
+  ) {
+    cachedAssignmentsUrl = trimmedValue;
+    setAssignmentsInputValue(trimmedValue);
+    reportStatus("Assignments page saved.");
+    return;
+  }
+
+  chrome.storage.local.set({ [ASSIGNMENTS_PAGE_URL_KEY]: trimmedValue }, () => {
+    if (chrome?.runtime?.lastError) {
+      reportStatus(
+        chrome.runtime.lastError.message ??
+          "Failed to save assignments page URL."
+      );
+      return;
+    }
+
+    cachedAssignmentsUrl = trimmedValue;
+    setAssignmentsInputValue(trimmedValue);
+    reportStatus("Assignments page saved.");
+  });
 };
 
 const persistActiveDataset = async (dataset: StoredOptions): Promise<void> => {
@@ -500,24 +576,28 @@ const applyOptionSetsState = (
 ): void => {
   cachedOptionSets = optionSets.map((entry) => ({ ...entry }));
 
-  const defaultEntry =
-    preferredKey !== undefined
-      ? findOptionSetByKey(cachedOptionSets, preferredKey)
-      : undefined;
+  let activeEntry: StoredOptions | undefined;
 
-  const fallbackEntry =
-    cachedOptionSets.length > 0
-      ? cachedOptionSets[cachedOptionSets.length - 1]
-      : undefined;
+  if (preferredKey === undefined) {
+    activeEntry =
+      findOptionSetByKey(cachedOptionSets, selectedProjectTitleKey) ??
+      (cachedOptionSets.length > 0
+        ? cachedOptionSets[cachedOptionSets.length - 1]
+        : undefined);
 
-  const activeEntry =
-    defaultEntry ??
-    findOptionSetByKey(cachedOptionSets, selectedProjectTitleKey) ??
-    fallbackEntry;
-
-  selectedProjectTitleKey = activeEntry
-    ? getProjectTitleKey(activeEntry.projectTitle)
-    : null;
+    selectedProjectTitleKey = activeEntry
+      ? getProjectTitleKey(activeEntry.projectTitle)
+      : null;
+  } else if (preferredKey === null) {
+    activeEntry = undefined;
+    selectedProjectTitleKey = null;
+  } else {
+    activeEntry =
+      findOptionSetByKey(cachedOptionSets, preferredKey) ?? undefined;
+    selectedProjectTitleKey = activeEntry
+      ? getProjectTitleKey(activeEntry.projectTitle)
+      : null;
+  }
 
   populateDatasetSelect(cachedOptionSets, selectedProjectTitleKey);
 
@@ -594,6 +674,14 @@ const handleOptionsStorageChange = (
     Object.prototype.hasOwnProperty.call(changes, "lastSessionDurationMs")
   ) {
     shouldRefreshWorkTime = true;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(changes, ASSIGNMENTS_PAGE_URL_KEY)) {
+    const newAssignmentsValue = sanitizeAssignmentsUrl(
+      changes[ASSIGNMENTS_PAGE_URL_KEY]?.newValue
+    );
+    cachedAssignmentsUrl = newAssignmentsValue;
+    setAssignmentsInputValue(newAssignmentsValue);
   }
 
   if (
@@ -884,7 +972,7 @@ const loadSavedOptions = (): void => {
 
     const preferredKey = hasStoredOptionsData(legacyCandidate)
       ? getProjectTitleKey(legacyCandidate.projectTitle)
-      : null;
+      : undefined;
 
     const resolvedCollection = hasStoredOptionsData(legacyCandidate)
       ? upsertOptionSet(normalizedCollection, legacyCandidate)
@@ -1086,6 +1174,22 @@ if (formElement instanceof HTMLFormElement) {
   });
 }
 
+if (assignmentsFormElement) {
+  assignmentsFormElement.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    const value = assignmentsInputElement?.value ?? "";
+    saveAssignmentsUrl(value);
+  });
+}
+
+if (assignmentsInputElement) {
+  assignmentsInputElement.addEventListener("input", (event) => {
+    const target = event.currentTarget as HTMLInputElement;
+    cachedAssignmentsUrl = target.value.trim();
+  });
+}
+
 if (datasetSelectElement) {
   datasetSelectElement.addEventListener("change", () => {
     handleDatasetSelectionChange();
@@ -1100,6 +1204,7 @@ if (deleteButtonElement) {
 
 const initializeOptionsPage = (): void => {
   attachOptionsStorageChangeListener();
+  loadAssignmentsUrl();
   loadSavedOptions();
 };
 

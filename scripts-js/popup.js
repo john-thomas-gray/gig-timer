@@ -214,7 +214,8 @@ const updatePreview = (summary) => {
             return;
         }
         const fieldValue = summary.fields?.[fieldName] ?? "";
-        element.textContent = fieldValue && fieldValue.trim().length > 0 ? fieldValue : "—";
+        element.textContent =
+            fieldValue && fieldValue.trim().length > 0 ? fieldValue : "—";
     });
 };
 const handleStorageChange = (changes, areaName) => {
