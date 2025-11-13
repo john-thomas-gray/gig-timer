@@ -11,6 +11,35 @@ let timerStart: number | null = null;
 let hasStoredDuration = false;
 let logIntervalId: number | null = null;
 let accumulatedDurationBeforeSessionMs = 0;
+let activeProjectTitle: string | null = null;
+
+const TIMER_PROJECT_DURATIONS_KEY = "projectDurations";
+
+const normalizeProjectTitle = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const normalizeTimerDurationMap = (raw: unknown): Record<string, number> => {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+
+  return Object.entries(raw as Record<string, unknown>).reduce<
+    Record<string, number>
+  >((acc, [key, value]) => {
+    if (typeof key === "string" && typeof value === "number") {
+      acc[key.trim()] = Number.isFinite(value) ? Math.max(0, value) : 0;
+    }
+
+    return acc;
+  }, {});
+};
 
 const getStoredDuration = (): Promise<number> =>
   new Promise((resolve) => {
@@ -23,15 +52,41 @@ const getStoredDuration = (): Promise<number> =>
       return;
     }
 
-    chrome.storage.local.get(
-      { lastSessionDurationMs: 0 },
-      (result: { lastSessionDurationMs?: unknown }) => {
+    const storageLocal = chrome.storage?.local;
+
+    if (!storageLocal || typeof storageLocal.get !== "function") {
+      resolve(0);
+      return;
+    }
+
+    storageLocal.get(
+      ["lastSessionDurationMs", "projectTitle", TIMER_PROJECT_DURATIONS_KEY],
+      (result: {
+        lastSessionDurationMs?: unknown;
+        projectTitle?: unknown;
+        [TIMER_PROJECT_DURATIONS_KEY]?: unknown;
+      }) => {
         if (chrome?.runtime?.lastError) {
           console.warn(
             "Failed to retrieve stored session duration.",
             chrome.runtime.lastError
           );
           resolve(0);
+          return;
+        }
+
+        const currentProject = normalizeProjectTitle(result.projectTitle);
+        activeProjectTitle = currentProject;
+
+        const durationMap = normalizeTimerDurationMap(
+          result[TIMER_PROJECT_DURATIONS_KEY]
+        );
+
+        if (
+          currentProject &&
+          Object.prototype.hasOwnProperty.call(durationMap, currentProject)
+        ) {
+          resolve(Math.max(0, durationMap[currentProject] ?? 0));
           return;
         }
 
@@ -56,14 +111,54 @@ const storeDuration = (duration: number): void => {
     return;
   }
 
-  chrome.storage.local.set({ lastSessionDurationMs: duration }, () => {
-    if (chrome?.runtime?.lastError) {
-      console.warn(
-        "Failed to store session duration.",
-        chrome.runtime.lastError
+  const storageLocal = chrome.storage?.local;
+
+  if (
+    !storageLocal ||
+    typeof storageLocal.get !== "function" ||
+    typeof storageLocal.set !== "function"
+  ) {
+    return;
+  }
+
+  storageLocal.get(
+    ["projectTitle", TIMER_PROJECT_DURATIONS_KEY],
+    (result: Record<string, unknown>) => {
+      if (chrome?.runtime?.lastError) {
+        console.warn(
+          "Failed to read session duration map.",
+          chrome.runtime.lastError
+        );
+        return;
+      }
+
+      const storedProjectTitle = normalizeProjectTitle(result.projectTitle);
+      const projectTitle = activeProjectTitle ?? storedProjectTitle;
+
+      const durationMap = normalizeTimerDurationMap(
+        result[TIMER_PROJECT_DURATIONS_KEY]
+      );
+
+      if (projectTitle) {
+        durationMap[projectTitle] = Math.max(0, duration);
+      }
+
+      storageLocal.set(
+        {
+          lastSessionDurationMs: duration,
+          [TIMER_PROJECT_DURATIONS_KEY]: durationMap,
+        },
+        () => {
+          if (chrome?.runtime?.lastError) {
+            console.warn(
+              "Failed to store session duration.",
+              chrome.runtime.lastError
+            );
+          }
+        }
       );
     }
-  });
+  );
 };
 
 function handlePageClose(): void {
@@ -125,11 +220,10 @@ async function startTimerInternal(): Promise<void> {
     }
 
     const sessionDurationMs = Date.now() - timerStart;
-    const totalDurationSeconds = Math.floor(
-      (accumulatedDurationBeforeSessionMs + sessionDurationMs) / 1000
-    );
-    console.log(`Timer duration: ${totalDurationSeconds}s`);
-  }, 3_000);
+    const totalDurationMs =
+      accumulatedDurationBeforeSessionMs + sessionDurationMs;
+    storeDuration(totalDurationMs);
+  }, 1_000);
 }
 
 const ensureWorkTimerApi = (): void => {

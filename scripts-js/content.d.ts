@@ -6,9 +6,11 @@ type ManifestWithOptionalMatches = {
 };
 declare const manifest: ManifestWithOptionalMatches | undefined;
 declare const manifestMatches: string[];
+declare const OPTIONS_STORAGE_SETS_KEY_CONTENT = "savedOptionSets";
 declare const doesUrlMatchPattern: (url: string, pattern: string) => boolean;
 declare const convertMatchPatternToRegExp: (pattern: string) => RegExp | null;
 declare const escapeRegex: (value: string) => string;
+declare const extractMatchesFromOptionSets: (raw: unknown) => string[];
 declare const getStoredMatches: () => Promise<string[]>;
 declare const currentUrl: string;
 declare const evaluateMatches: (patterns: string[]) => void;

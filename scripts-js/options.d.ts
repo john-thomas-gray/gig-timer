@@ -3,6 +3,26 @@ type StoredOptions = {
     matchesUrl: string;
 } & Record<AdditionalFieldName, string>;
 type StorageResult = Partial<Record<keyof StoredOptions, unknown>>;
+type StoredOptionsCollection = StoredOptions[];
+type ProjectDurationMap = Record<string, number>;
+type OptionsStorageChangeMap = Record<string, {
+    newValue?: unknown;
+    oldValue?: unknown;
+}>;
+type OptionsStorageOnChanged = {
+    addListener?: (callback: (changes: OptionsStorageChangeMap, areaName: string) => void) => void;
+    removeListener?: (callback: (changes: OptionsStorageChangeMap, areaName: string) => void) => void;
+};
+type OptionsConfirmationModalConfig = {
+    message: string;
+    cancelText?: string;
+    confirmText?: string;
+    onConfirm: () => void;
+};
+type OptionsModalApi = {
+    showConfirmation: (options: OptionsConfirmationModalConfig) => void;
+};
+declare const getWorkTimerModal: () => OptionsModalApi | undefined;
 type AdditionalFieldConfig = {
     id: string;
     label: string;
@@ -17,17 +37,50 @@ declare const savedUrlElement: HTMLElement | null;
 declare const inputElement: HTMLInputElement | null;
 declare const formElement: HTMLElement | null;
 declare const statusElement: HTMLElement | null;
+declare const datasetSelectElement: HTMLSelectElement | null;
+declare const workTimeValueElement: HTMLElement | null;
+declare const deleteButtonElement: HTMLButtonElement | null;
+declare const OPTIONS_STORAGE_SETS_KEY = "savedOptionSets";
+declare const OPTIONS_PROJECT_DURATIONS_KEY = "projectDurations";
 declare const getCurrentMonthYear: () => string;
 declare const additionalFieldConfigs: AdditionalFieldConfig[];
+declare const storedOptionFieldNames: Array<keyof StoredOptions>;
 declare const additionalInputs: Partial<Record<AdditionalFieldName, HTMLInputElement>>;
+declare let cachedOptionSets: StoredOptionsCollection;
+declare let selectedProjectTitleKey: string | null;
+declare let hasAttachedStorageListener: boolean;
+declare let isPersistingActiveDataset: boolean;
+declare const formatDurationForDisplay: (durationMs: number) => string;
+declare const updateWorkTimeDisplay: (durationMs: number) => void;
+declare const getProjectTitleKey: (value: string) => string;
+declare const findOptionSetByKey: (collection: StoredOptionsCollection, key: string | null) => StoredOptions | undefined;
+declare const normalizeOptionsDurationMap: (raw: unknown) => ProjectDurationMap;
+declare const getProjectDuration: (projectTitle: string) => Promise<number>;
+declare const refreshWorkTimeForSelection: () => Promise<void>;
+declare const persistActiveDataset: (dataset: StoredOptions) => Promise<void>;
 declare const getDefaultValueForConfig: (config: AdditionalFieldConfig) => string;
 declare const createDefaultStoredOptions: () => StoredOptions;
 declare const normalizeStoredOption: <Key extends keyof StoredOptions>(storageResult: StorageResult, key: Key, fallback: StoredOptions[Key]) => StoredOptions[Key];
-declare const displaySavedUrl: (storedValues: Partial<StoredOptions>) => void;
+declare const createStoredOptionsFromResult: (storageResult: StorageResult | undefined, defaults: StoredOptions) => StoredOptions;
+declare const sanitizeStoredOptionsInput: (input: StoredOptions, defaults: StoredOptions) => StoredOptions;
+declare const hasStoredOptionsData: (options: StoredOptions) => boolean;
+declare const upsertOptionSet: (collection: StoredOptionsCollection, entry: StoredOptions) => StoredOptionsCollection;
+declare const normalizeStoredOptionCollection: (rawCollection: unknown, defaults: StoredOptions) => StoredOptionsCollection;
+declare const buildDisplayEntries: (storedValues: StoredOptions) => Array<[string, string]>;
+declare const displaySelectedOptionSet: (optionSet?: StoredOptions) => void;
+declare const populateDatasetSelect: (optionSets: StoredOptionsCollection, selectedKey: string | null) => void;
+declare const applyOptionSetsState: (optionSets: StoredOptionsCollection, defaultOptions: StoredOptions, preferredKey?: string | null) => void;
+declare const handleDatasetSelectionChange: () => void;
+declare const handleOptionsStorageChange: (changes: OptionsStorageChangeMap, areaName: string) => void;
+declare const getOptionsStorageOnChanged: () => OptionsStorageOnChanged | undefined;
+declare const attachOptionsStorageChangeListener: () => void;
+declare const deleteSelectedDataset: () => void;
 declare const reportStatus: (message: string) => void;
 declare const clearStatus: () => void;
 declare const fillFormFields: (storedValues: StoredOptions) => void;
 declare const loadSavedOptions: () => void;
 declare const collectFormValues: () => StoredOptions;
 declare const saveOptions: (values: StoredOptions) => void;
+declare const requestProjectDeletion: () => void;
+declare const initializeOptionsPage: () => void;
 //# sourceMappingURL=options.d.ts.map

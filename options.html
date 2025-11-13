@@ -20,6 +20,32 @@
         font-weight: 600;
       }
 
+      select {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 16px;
+        box-sizing: border-box;
+      }
+
+      #work-time-display {
+        margin-bottom: 16px;
+        font-weight: 600;
+      }
+
+      .danger-button {
+        background-color: #dc2626;
+        color: #ffffff;
+        border: none;
+        padding: 10px 16px;
+        font-size: 14px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      .danger-button:hover {
+        background-color: #b91c1c;
+      }
+
       input[type="text"] {
         width: 100%;
         padding: 8px;
@@ -48,7 +74,14 @@
   <body>
     <main>
       <h1>Work Timer Options</h1>
-      <div id="saved-url">No URL saved yet.</div>
+      <label for="dataset-select">Saved Projects</label>
+      <select id="dataset-select">
+        <option value="">Select a project</option>
+      </select>
+      <div id="saved-url">No dataset selected.</div>
+      <div id="work-time-display">
+        Work Time: <span id="work-time-value">00:00:00</span>
+      </div>
       <form id="url-form">
         <label for="url-input">Matches URL</label>
         <input
@@ -59,6 +92,9 @@
         />
         <button type="submit">Save</button>
       </form>
+    <button id="delete-button" type="button" class="danger-button">
+      Delete Project
+    </button>
       <div id="status" role="status" aria-live="polite"></div>
     </main>
     <script src="scripts-js/options.js"></script>

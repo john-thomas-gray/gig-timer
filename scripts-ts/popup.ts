@@ -1,9 +1,22 @@
 const POPUP_GOOGLE_APPS_SCRIPT_ENDPOINT =
   "https://script.google.com/macros/s/AKfycbwKRKegGwQLUNs0ANSTfz7_L-944XcWJgtJxIUTUSnLV9liUD1AXxGPVmdHCVWqNs2A/exec";
 
+type PopupAdditionalFieldName =
+  | "client"
+  | "studio"
+  | "genre"
+  | "season"
+  | "subtitles"
+  | "runtime"
+  | "rate"
+  | "dateBooked";
+
+type PopupDatasetFieldKey = "matchesUrl" | PopupAdditionalFieldName;
+
 type StoredSummary = {
   projectTitle: string | null;
   durationMs: number;
+  fields: Partial<Record<PopupDatasetFieldKey, string>>;
 };
 
 type WorkSummaryPayload = {
@@ -11,7 +24,35 @@ type WorkSummaryPayload = {
   "Work Time": string;
 };
 
-type StorageChangeMap = Record<
+const POPUP_PROJECT_DURATIONS_KEY = "projectDurations";
+
+const POPUP_DATASET_FIELD_NAMES: PopupDatasetFieldKey[] = [
+  "matchesUrl",
+  "client",
+  "studio",
+  "genre",
+  "season",
+  "subtitles",
+  "runtime",
+  "rate",
+  "dateBooked",
+];
+
+const datasetFieldElements: Partial<
+  Record<PopupDatasetFieldKey, HTMLElement | null>
+> = {
+  matchesUrl: document.getElementById("summary-matches-url"),
+  client: document.getElementById("summary-client"),
+  studio: document.getElementById("summary-studio"),
+  genre: document.getElementById("summary-genre"),
+  season: document.getElementById("summary-season"),
+  subtitles: document.getElementById("summary-subtitles"),
+  runtime: document.getElementById("summary-runtime"),
+  rate: document.getElementById("summary-rate"),
+  dateBooked: document.getElementById("summary-dateBooked"),
+};
+
+type PopupStorageChangeMap = Record<
   string,
   { newValue?: unknown; oldValue?: unknown }
 >;
@@ -26,8 +67,38 @@ const popupResetButton = document.getElementById(
 const popupProjectTitleElement = document.getElementById("project-title");
 const popupWorkTimeElement = document.getElementById("work-time");
 
-let currentSummary: StoredSummary = { projectTitle: null, durationMs: 0 };
+let currentSummary: StoredSummary = {
+  projectTitle: null,
+  durationMs: 0,
+  fields: {},
+};
 let hasAttachedStorageChangeListener = false;
+
+const normalizePopupDurationMap = (raw: unknown): Record<string, number> => {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+
+  return Object.entries(raw as Record<string, unknown>).reduce<
+    Record<string, number>
+  >((acc, [title, value]) => {
+    if (typeof title === "string" && typeof value === "number") {
+      acc[title] = Number.isFinite(value) ? Math.max(0, value) : 0;
+    }
+
+    return acc;
+  }, {});
+};
+
+const sanitizePopupFieldValue = (value: unknown): string => {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed.length > 0 ? trimmed : "";
+};
 
 const formatDurationForSheetValue = (durationMs: number): string => {
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
@@ -71,64 +142,124 @@ const clearPopupStatus = (): void => {
 
 const getStoredSummary = (): Promise<StoredSummary> =>
   new Promise((resolve) => {
-    if (
-      typeof chrome === "undefined" ||
-      !chrome.storage?.local ||
-      typeof chrome.storage.local.get !== "function"
-    ) {
-      resolve({ projectTitle: null, durationMs: 0 });
+    if (typeof chrome === "undefined") {
+      resolve({ projectTitle: null, durationMs: 0, fields: {} });
       return;
     }
 
-    chrome.storage.local.get(
-      ["projectTitle", "lastSessionDurationMs"],
-      (items: Record<string, unknown>) => {
-        if (chrome?.runtime?.lastError) {
-          console.warn(
-            "Failed to retrieve stored values for popup summary.",
-            chrome.runtime.lastError
-          );
-          resolve({ projectTitle: null, durationMs: 0 });
-          return;
-        }
+    const storageLocal = chrome.storage?.local;
 
-        const rawTitle = items.projectTitle;
-        const rawDuration = items.lastSessionDurationMs;
+    if (!storageLocal || typeof storageLocal.get !== "function") {
+      resolve({ projectTitle: null, durationMs: 0, fields: {} });
+      return;
+    }
 
-        const projectTitle =
-          typeof rawTitle === "string" && rawTitle.trim().length > 0
-            ? rawTitle.trim()
-            : null;
+    const fieldKeys = [
+      "projectTitle",
+      "lastSessionDurationMs",
+      POPUP_PROJECT_DURATIONS_KEY,
+      ...POPUP_DATASET_FIELD_NAMES,
+    ];
 
-        const durationMs =
-          typeof rawDuration === "number" && Number.isFinite(rawDuration)
-            ? Math.max(0, rawDuration)
-            : 0;
-
-        resolve({ projectTitle, durationMs });
+    storageLocal.get(fieldKeys, (items: Record<string, unknown>) => {
+      if (chrome?.runtime?.lastError) {
+        console.warn(
+          "Failed to retrieve stored values for popup summary.",
+          chrome.runtime.lastError
+        );
+        resolve({ projectTitle: null, durationMs: 0, fields: {} });
+        return;
       }
-    );
+
+      const rawTitle = items.projectTitle;
+      const projectTitle =
+        typeof rawTitle === "string" && rawTitle.trim().length > 0
+          ? rawTitle.trim()
+          : null;
+
+      const fields: Partial<Record<PopupDatasetFieldKey, string>> = {};
+
+      POPUP_DATASET_FIELD_NAMES.forEach((fieldName) => {
+        fields[fieldName] = sanitizePopupFieldValue(items[fieldName]);
+      });
+
+      let durationMs = 0;
+      const rawDuration = items.lastSessionDurationMs;
+
+      if (typeof rawDuration === "number" && Number.isFinite(rawDuration)) {
+        durationMs = Math.max(0, rawDuration);
+      }
+
+      const durationMap = normalizePopupDurationMap(
+        items[POPUP_PROJECT_DURATIONS_KEY]
+      );
+
+      if (
+        projectTitle &&
+        Object.prototype.hasOwnProperty.call(durationMap, projectTitle)
+      ) {
+        const mappedDuration = durationMap[projectTitle];
+
+        if (typeof mappedDuration === "number") {
+          durationMs = Math.max(0, mappedDuration);
+        }
+      }
+
+      resolve({ projectTitle, durationMs, fields });
+    });
   });
 
 const resetStoredDuration = (): Promise<void> =>
   new Promise((resolve, reject) => {
+    if (typeof chrome === "undefined") {
+      resolve();
+      return;
+    }
+
+    const storageLocal = chrome.storage?.local;
+
     if (
-      typeof chrome === "undefined" ||
-      !chrome.storage?.local ||
-      typeof chrome.storage.local.set !== "function"
+      !storageLocal ||
+      typeof storageLocal.get !== "function" ||
+      typeof storageLocal.set !== "function"
     ) {
       resolve();
       return;
     }
 
-    chrome.storage.local.set({ lastSessionDurationMs: 0 }, () => {
-      if (chrome?.runtime?.lastError) {
-        reject(chrome.runtime.lastError);
-        return;
-      }
+    storageLocal.get(
+      ["projectTitle", POPUP_PROJECT_DURATIONS_KEY],
+      (items: Record<string, unknown>) => {
+        if (chrome?.runtime?.lastError) {
+          reject(chrome.runtime.lastError);
+          return;
+        }
 
-      resolve();
-    });
+        const projectTitle = sanitizePopupFieldValue(items.projectTitle);
+        const durationMap = normalizePopupDurationMap(
+          items[POPUP_PROJECT_DURATIONS_KEY]
+        );
+
+        if (projectTitle.length > 0) {
+          durationMap[projectTitle] = 0;
+        }
+
+        storageLocal.set(
+          {
+            lastSessionDurationMs: 0,
+            [POPUP_PROJECT_DURATIONS_KEY]: durationMap,
+          },
+          () => {
+            if (chrome?.runtime?.lastError) {
+              reject(chrome.runtime.lastError);
+              return;
+            }
+
+            resolve();
+          }
+        );
+      }
+    );
   });
 
 const buildWorkSummaryPayload = (
@@ -187,6 +318,7 @@ const updatePreview = (summary: StoredSummary): void => {
   currentSummary = {
     projectTitle: summary.projectTitle,
     durationMs: summary.durationMs,
+    fields: { ...summary.fields },
   };
 
   if (popupProjectTitleElement) {
@@ -198,10 +330,21 @@ const updatePreview = (summary: StoredSummary): void => {
       summary.durationMs
     );
   }
+
+  POPUP_DATASET_FIELD_NAMES.forEach((fieldName) => {
+    const element = datasetFieldElements[fieldName];
+    if (!element) {
+      return;
+    }
+
+    const fieldValue = summary.fields?.[fieldName] ?? "";
+    element.textContent =
+      fieldValue && fieldValue.trim().length > 0 ? fieldValue : "—";
+  });
 };
 
 const handleStorageChange = (
-  changes: StorageChangeMap,
+  changes: PopupStorageChangeMap,
   areaName: string
 ): void => {
   if (areaName !== "local") {
@@ -209,7 +352,11 @@ const handleStorageChange = (
   }
 
   let shouldUpdate = false;
-  let nextSummary = { ...currentSummary };
+  let nextSummary: StoredSummary = {
+    projectTitle: currentSummary.projectTitle,
+    durationMs: currentSummary.durationMs,
+    fields: { ...currentSummary.fields },
+  };
 
   if (Object.prototype.hasOwnProperty.call(changes, "lastSessionDurationMs")) {
     const durationChange = changes.lastSessionDurationMs;
@@ -239,28 +386,73 @@ const handleStorageChange = (
     shouldUpdate = true;
   }
 
+  const nextFields = { ...nextSummary.fields };
+  let fieldsChanged = false;
+
+  POPUP_DATASET_FIELD_NAMES.forEach((fieldName) => {
+    if (Object.prototype.hasOwnProperty.call(changes, fieldName)) {
+      const fieldChange = changes[fieldName];
+      const sanitizedValue = sanitizePopupFieldValue(fieldChange?.newValue);
+      nextFields[fieldName] = sanitizedValue;
+      fieldsChanged = true;
+    }
+  });
+
+  if (fieldsChanged) {
+    nextSummary = {
+      ...nextSummary,
+      fields: nextFields,
+    };
+    shouldUpdate = true;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(changes, POPUP_PROJECT_DURATIONS_KEY)
+  ) {
+    const durationChange = changes[POPUP_PROJECT_DURATIONS_KEY];
+    const durationMap = normalizePopupDurationMap(durationChange?.newValue);
+
+    if (
+      nextSummary.projectTitle &&
+      Object.prototype.hasOwnProperty.call(
+        durationMap,
+        nextSummary.projectTitle
+      )
+    ) {
+      const mappedDuration = durationMap[nextSummary.projectTitle];
+
+      if (typeof mappedDuration === "number") {
+        nextSummary = {
+          ...nextSummary,
+          durationMs: Math.max(0, mappedDuration),
+        };
+        shouldUpdate = true;
+      }
+    }
+  }
+
   if (shouldUpdate) {
     updatePreview(nextSummary);
   }
 };
 
-type StorageOnChanged = {
+type PopupStorageOnChanged = {
   addListener?: (
-    callback: (changes: StorageChangeMap, areaName: string) => void
+    callback: (changes: PopupStorageChangeMap, areaName: string) => void
   ) => void;
   removeListener?: (
-    callback: (changes: StorageChangeMap, areaName: string) => void
+    callback: (changes: PopupStorageChangeMap, areaName: string) => void
   ) => void;
 };
 
-const getStorageOnChanged = (): StorageOnChanged | undefined => {
+const getStorageOnChanged = (): PopupStorageOnChanged | undefined => {
   if (typeof chrome === "undefined") {
     return undefined;
   }
 
   const storage = (
     chrome as {
-      storage?: { onChanged?: StorageOnChanged };
+      storage?: { onChanged?: PopupStorageOnChanged };
     }
   ).storage;
 

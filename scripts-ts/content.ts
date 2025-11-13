@@ -18,6 +18,8 @@ const manifestMatches =
       : manifest.content_scripts.matches ?? []
     : [];
 
+const OPTIONS_STORAGE_SETS_KEY_CONTENT = "savedOptionSets";
+
 const doesUrlMatchPattern = (url: string, pattern: string): boolean => {
   const regex = convertMatchPatternToRegExp(pattern);
 
@@ -74,6 +76,28 @@ const convertMatchPatternToRegExp = (pattern: string): RegExp | null => {
 const escapeRegex = (value: string): string =>
   value.replace(/[.*^$+?()[\]{}|\\]/g, "\\$&");
 
+const extractMatchesFromOptionSets = (raw: unknown): string[] => {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const matches = new Set<string>();
+
+  raw.forEach((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
+
+    const matchValue = (entry as { matchesUrl?: unknown }).matchesUrl;
+
+    if (typeof matchValue === "string" && matchValue.trim().length > 0) {
+      matches.add(matchValue.trim());
+    }
+  });
+
+  return Array.from(matches);
+};
+
 const getStoredMatches = (): Promise<string[]> =>
   new Promise((resolve) => {
     if (
@@ -86,8 +110,8 @@ const getStoredMatches = (): Promise<string[]> =>
     }
 
     chrome.storage.local.get(
-      { matchesUrl: "" },
-      (result: { matchesUrl?: unknown }) => {
+      [OPTIONS_STORAGE_SETS_KEY_CONTENT, "matchesUrl"],
+      (result: Record<string, unknown>) => {
         if (chrome?.runtime?.lastError) {
           console.warn(
             "Failed to retrieve stored match pattern.",
@@ -97,16 +121,28 @@ const getStoredMatches = (): Promise<string[]> =>
           return;
         }
 
-        const storedValue = result.matchesUrl;
+        const fromOptionSets = extractMatchesFromOptionSets(
+          result[OPTIONS_STORAGE_SETS_KEY_CONTENT]
+        );
 
-        if (typeof storedValue === "string" && storedValue.trim().length > 0) {
-          resolve([storedValue.trim()]);
+        if (fromOptionSets.length > 0) {
+          resolve(fromOptionSets);
           return;
         }
 
-        if (Array.isArray(storedValue)) {
+        const legacyValue = result.matchesUrl;
+
+        if (
+          typeof legacyValue === "string" &&
+          legacyValue.trim().length > 0
+        ) {
+          resolve([legacyValue.trim()]);
+          return;
+        }
+
+        if (Array.isArray(legacyValue)) {
           resolve(
-            storedValue
+            legacyValue
               .filter(
                 (value): value is string =>
                   typeof value === "string" && value.trim().length > 0

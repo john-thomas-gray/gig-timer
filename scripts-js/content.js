@@ -7,6 +7,7 @@ const manifestMatches = manifest && manifest.content_scripts
         ? manifest.content_scripts.flatMap((script) => script.matches ?? [])
         : manifest.content_scripts.matches ?? []
     : [];
+const OPTIONS_STORAGE_SETS_KEY_CONTENT = "savedOptionSets";
 const doesUrlMatchPattern = (url, pattern) => {
     const regex = convertMatchPatternToRegExp(pattern);
     if (regex) {
@@ -42,6 +43,22 @@ const convertMatchPatternToRegExp = (pattern) => {
     return new RegExp(`^${schemeRegex}://${hostRegex}${pathRegex}$`);
 };
 const escapeRegex = (value) => value.replace(/[.*^$+?()[\]{}|\\]/g, "\\$&");
+const extractMatchesFromOptionSets = (raw) => {
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+    const matches = new Set();
+    raw.forEach((entry) => {
+        if (!entry || typeof entry !== "object") {
+            return;
+        }
+        const matchValue = entry.matchesUrl;
+        if (typeof matchValue === "string" && matchValue.trim().length > 0) {
+            matches.add(matchValue.trim());
+        }
+    });
+    return Array.from(matches);
+};
 const getStoredMatches = () => new Promise((resolve) => {
     if (typeof chrome === "undefined" ||
         !chrome.storage?.local ||
@@ -49,19 +66,25 @@ const getStoredMatches = () => new Promise((resolve) => {
         resolve([]);
         return;
     }
-    chrome.storage.local.get({ matchesUrl: "" }, (result) => {
+    chrome.storage.local.get([OPTIONS_STORAGE_SETS_KEY_CONTENT, "matchesUrl"], (result) => {
         if (chrome?.runtime?.lastError) {
             console.warn("Failed to retrieve stored match pattern.", chrome.runtime.lastError);
             resolve([]);
             return;
         }
-        const storedValue = result.matchesUrl;
-        if (typeof storedValue === "string" && storedValue.trim().length > 0) {
-            resolve([storedValue.trim()]);
+        const fromOptionSets = extractMatchesFromOptionSets(result[OPTIONS_STORAGE_SETS_KEY_CONTENT]);
+        if (fromOptionSets.length > 0) {
+            resolve(fromOptionSets);
             return;
         }
-        if (Array.isArray(storedValue)) {
-            resolve(storedValue
+        const legacyValue = result.matchesUrl;
+        if (typeof legacyValue === "string" &&
+            legacyValue.trim().length > 0) {
+            resolve([legacyValue.trim()]);
+            return;
+        }
+        if (Array.isArray(legacyValue)) {
+            resolve(legacyValue
                 .filter((value) => typeof value === "string" && value.trim().length > 0)
                 .map((value) => value.trim()));
             return;
