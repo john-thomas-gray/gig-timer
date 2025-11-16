@@ -1,96 +1,24 @@
-type AdditionalFieldName =
-  | "projectTitle"
-  | "client"
-  | "studio"
-  | "genre"
-  | "season"
-  | "subtitles"
-  | "runtime"
-  | "rate"
-  | "dateBooked";
-
-type StoredOptions = {
-  matchesUrl: string;
-} & Record<AdditionalFieldName, string>;
-
-type StorageResult = Partial<Record<keyof StoredOptions, unknown>>;
-
-type StoredOptionsCollection = StoredOptions[];
-
-type ProjectDurationMap = Record<string, number>;
-
-type OptionsStorageChangeMap = Record<
-  string,
-  { newValue?: unknown; oldValue?: unknown }
->;
-
-type OptionsStorageOnChanged = {
-  addListener?: (
-    callback: (changes: OptionsStorageChangeMap, areaName: string) => void
-  ) => void;
-  removeListener?: (
-    callback: (changes: OptionsStorageChangeMap, areaName: string) => void
-  ) => void;
-};
-
-type OptionsConfirmationModalConfig = {
-  message: string;
-  cancelText?: string;
-  confirmText?: string;
-  onConfirm: () => void;
-};
-
-type OptionsModalApi = {
-  showConfirmation: (options: OptionsConfirmationModalConfig) => void;
-};
-
-const getWorkTimerModal = (): OptionsModalApi | undefined =>
-  (window as typeof window & { workTimerModal?: OptionsModalApi })
-    .workTimerModal;
-
-type AdditionalFieldConfig = {
-  id: string;
-  label: string;
-  name: AdditionalFieldName;
-  type?: string;
-  placeholder?: string;
-  required?: boolean;
-  defaultValue?: any;
-  getDefaultValue?: () => string;
-};
-
+"use strict";
+const getWorkTimerModal = () => window.workTimerModal;
 const savedUrlElement = document.getElementById("saved-url");
-const assignmentsFormElement = document.getElementById(
-  "assignments-form"
-) as HTMLFormElement | null;
-const assignmentsInputElement = document.getElementById(
-  "assignments-input"
-) as HTMLInputElement | null;
-const inputElement = document.getElementById(
-  "url-input"
-) as HTMLInputElement | null;
+const assignmentsFormElement = document.getElementById("assignments-form");
+const assignmentsInputElement = document.getElementById("assignments-input");
+const inputElement = document.getElementById("url-input");
 const formElement = document.getElementById("url-form");
 const statusElement = document.getElementById("status");
-const datasetSelectElement = document.getElementById(
-  "dataset-select"
-) as HTMLSelectElement | null;
+const datasetSelectElement = document.getElementById("dataset-select");
 const workTimeValueElement = document.getElementById("work-time-value");
-const deleteButtonElement = document.getElementById(
-  "delete-button"
-) as HTMLButtonElement | null;
-
+const deleteButtonElement = document.getElementById("delete-button");
 const OPTIONS_STORAGE_SETS_KEY = "savedOptionSets";
 const OPTIONS_PROJECT_DURATIONS_KEY = "projectDurations";
 const ASSIGNMENTS_PAGE_URL_KEY = "assignmentsPageUrl";
-
-const getCurrentMonthYear = (): string => {
+const getCurrentMonthYear = () => {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const year = String(now.getFullYear()).slice(-2);
   return `${month}/${year}`;
 };
-
-const additionalFieldConfigs: AdditionalFieldConfig[] = [
+const additionalFieldConfigs = [
   {
     id: "project-title-input",
     label: "Project Title",
@@ -130,13 +58,11 @@ const additionalFieldConfigs: AdditionalFieldConfig[] = [
     label: "Runtime",
     name: "runtime",
   },
-
   {
     id: "rate-input",
     label: "Rate",
     name: "rate",
   },
-
   {
     id: "date-booked-input",
     label: "Date Booked",
@@ -145,69 +71,49 @@ const additionalFieldConfigs: AdditionalFieldConfig[] = [
     getDefaultValue: getCurrentMonthYear,
   },
 ];
-
-const storedOptionFieldNames: Array<keyof StoredOptions> = [
+const storedOptionFieldNames = [
   "matchesUrl",
   ...additionalFieldConfigs.map((config) => config.name),
 ];
-
-const additionalInputs: Partial<Record<AdditionalFieldName, HTMLInputElement>> =
-  {};
-
-let cachedOptionSets: StoredOptionsCollection = [];
-let selectedProjectTitleKey: string | null = null;
+const additionalInputs = {};
+let cachedOptionSets = [];
+let selectedProjectTitleKey = null;
 let hasAttachedStorageListener = false;
 let isPersistingActiveDataset = false;
 let cachedAssignmentsUrl = "";
-
-const formatDurationForDisplay = (durationMs: number): string => {
+const formatDurationForDisplay = (durationMs) => {
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
     return "00:00:00";
   }
-
   const totalSeconds = Math.max(0, Math.round(durationMs / 1_000));
   const hours = Math.floor(totalSeconds / 3_600);
   const minutes = Math.floor((totalSeconds % 3_600) / 60);
   const seconds = totalSeconds % 60;
-
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
     2,
     "0"
   )}:${String(seconds).padStart(2, "0")}`;
 };
-
-const updateWorkTimeDisplay = (durationMs: number): void => {
+const updateWorkTimeDisplay = (durationMs) => {
   if (!workTimeValueElement) {
     return;
   }
-
   workTimeValueElement.textContent = formatDurationForDisplay(durationMs);
 };
-
-const getProjectTitleKey = (value: string): string =>
-  value.trim().toLowerCase();
-
-const findOptionSetByKey = (
-  collection: StoredOptionsCollection,
-  key: string | null
-): StoredOptions | undefined => {
+const getProjectTitleKey = (value) => value.trim().toLowerCase();
+const findOptionSetByKey = (collection, key) => {
   if (!key) {
     return undefined;
   }
-
   return collection.find(
     (entry) => getProjectTitleKey(entry.projectTitle) === key
   );
 };
-
-const normalizeOptionsDurationMap = (raw: unknown): ProjectDurationMap => {
+const normalizeOptionsDurationMap = (raw) => {
   if (!raw || typeof raw !== "object") {
     return {};
   }
-
-  return Object.entries(
-    raw as Record<string, unknown>
-  ).reduce<ProjectDurationMap>((acc, [title, durationValue]) => {
+  return Object.entries(raw).reduce((acc, [title, durationValue]) => {
     if (
       typeof title === "string" &&
       typeof durationValue === "number" &&
@@ -218,22 +124,17 @@ const normalizeOptionsDurationMap = (raw: unknown): ProjectDurationMap => {
     return acc;
   }, {});
 };
-
-const sanitizeAssignmentsUrl = (value: unknown): string =>
+const sanitizeAssignmentsUrl = (value) =>
   typeof value === "string" ? value.trim() : "";
-
-const setAssignmentsInputValue = (value: string): void => {
+const setAssignmentsInputValue = (value) => {
   if (!assignmentsInputElement) {
     return;
   }
-
   assignmentsInputElement.value = value;
 };
-
-const getProjectDuration = (projectTitle: string): Promise<number> =>
+const getProjectDuration = (projectTitle) =>
   new Promise((resolve) => {
     const trimmedTitle = projectTitle.trim();
-
     if (
       trimmedTitle.length === 0 ||
       typeof chrome === "undefined" ||
@@ -243,57 +144,43 @@ const getProjectDuration = (projectTitle: string): Promise<number> =>
       resolve(0);
       return;
     }
-
     const storageLocal = chrome.storage?.local;
-
     if (!storageLocal || typeof storageLocal.get !== "function") {
       resolve(0);
       return;
     }
-
-    storageLocal.get(
-      [OPTIONS_PROJECT_DURATIONS_KEY],
-      (result: Record<string, unknown>) => {
-        if (chrome?.runtime?.lastError) {
-          resolve(0);
-          return;
-        }
-
-        const durations = normalizeOptionsDurationMap(
-          result[OPTIONS_PROJECT_DURATIONS_KEY]
-        );
-
-        resolve(durations[trimmedTitle] ?? 0);
+    storageLocal.get([OPTIONS_PROJECT_DURATIONS_KEY], (result) => {
+      if (chrome?.runtime?.lastError) {
+        resolve(0);
+        return;
       }
-    );
+      const durations = normalizeOptionsDurationMap(
+        result[OPTIONS_PROJECT_DURATIONS_KEY]
+      );
+      resolve(durations[trimmedTitle] ?? 0);
+    });
   });
-
-const refreshWorkTimeForSelection = async (): Promise<void> => {
+const refreshWorkTimeForSelection = async () => {
   if (!selectedProjectTitleKey) {
     updateWorkTimeDisplay(0);
     return;
   }
-
   const selectedSet = findOptionSetByKey(
     cachedOptionSets,
     selectedProjectTitleKey
   );
-
   if (!selectedSet) {
     updateWorkTimeDisplay(0);
     return;
   }
-
   const durationMs = await getProjectDuration(selectedSet.projectTitle);
   updateWorkTimeDisplay(durationMs);
 };
-
-const loadAssignmentsUrl = (): void => {
-  const applyValue = (value: string): void => {
+const loadAssignmentsUrl = () => {
+  const applyValue = (value) => {
     cachedAssignmentsUrl = value;
     setAssignmentsInputValue(value);
   };
-
   if (
     typeof chrome === "undefined" ||
     !chrome.storage?.local ||
@@ -302,23 +189,19 @@ const loadAssignmentsUrl = (): void => {
     applyValue(cachedAssignmentsUrl);
     return;
   }
-
   chrome.storage.local.get([ASSIGNMENTS_PAGE_URL_KEY], (result) => {
     if (chrome?.runtime?.lastError) {
       applyValue(cachedAssignmentsUrl);
       return;
     }
-
     const storedValue = sanitizeAssignmentsUrl(
       result?.[ASSIGNMENTS_PAGE_URL_KEY]
     );
     applyValue(storedValue);
   });
 };
-
-const saveAssignmentsUrl = (rawValue: string): void => {
+const saveAssignmentsUrl = (rawValue) => {
   const trimmedValue = rawValue.trim();
-
   if (
     typeof chrome === "undefined" ||
     !chrome.storage?.local ||
@@ -329,7 +212,6 @@ const saveAssignmentsUrl = (rawValue: string): void => {
     reportStatus("Assignments page saved.");
     return;
   }
-
   chrome.storage.local.set({ [ASSIGNMENTS_PAGE_URL_KEY]: trimmedValue }, () => {
     if (chrome?.runtime?.lastError) {
       reportStatus(
@@ -338,25 +220,19 @@ const saveAssignmentsUrl = (rawValue: string): void => {
       );
       return;
     }
-
     cachedAssignmentsUrl = trimmedValue;
     setAssignmentsInputValue(trimmedValue);
     reportStatus("Assignments page saved.");
   });
 };
-
-const persistActiveDataset = async (dataset: StoredOptions): Promise<void> => {
+const persistActiveDataset = async (dataset) => {
   const storageLocal =
     typeof chrome !== "undefined" ? chrome.storage?.local : undefined;
-
   if (!storageLocal || typeof storageLocal.set !== "function") {
     return;
   }
-
   const durationMs = await getProjectDuration(dataset.projectTitle);
-
   isPersistingActiveDataset = true;
-
   storageLocal.set(
     {
       ...dataset,
@@ -365,7 +241,6 @@ const persistActiveDataset = async (dataset: StoredOptions): Promise<void> => {
     },
     () => {
       isPersistingActiveDataset = false;
-
       if (chrome?.runtime?.lastError) {
         reportStatus(
           chrome.runtime.lastError.message ??
@@ -375,16 +250,13 @@ const persistActiveDataset = async (dataset: StoredOptions): Promise<void> => {
     }
   );
 };
-
-const getDefaultValueForConfig = (config: AdditionalFieldConfig): string => {
+const getDefaultValueForConfig = (config) => {
   if (typeof config.getDefaultValue === "function") {
     return config.getDefaultValue();
   }
-
   return config.defaultValue ?? "";
 };
-
-const createDefaultStoredOptions = (): StoredOptions => ({
+const createDefaultStoredOptions = () => ({
   matchesUrl: "",
   projectTitle: "",
   client: "",
@@ -396,167 +268,105 @@ const createDefaultStoredOptions = (): StoredOptions => ({
   rate: "",
   dateBooked: getCurrentMonthYear(),
 });
-
-const normalizeStoredOption = <Key extends keyof StoredOptions>(
-  storageResult: StorageResult,
-  key: Key,
-  fallback: StoredOptions[Key]
-): StoredOptions[Key] => {
+const normalizeStoredOption = (storageResult, key, fallback) => {
   const rawValue = storageResult?.[key];
-
   if (typeof rawValue === "string") {
     return rawValue;
   }
-
   if (Array.isArray(rawValue)) {
-    const firstString = rawValue.find(
-      (value): value is string => typeof value === "string"
-    );
-
+    const firstString = rawValue.find((value) => typeof value === "string");
     if (firstString) {
       return firstString;
     }
   }
-
   return fallback;
 };
-
-const createStoredOptionsFromResult = (
-  storageResult: StorageResult | undefined,
-  defaults: StoredOptions
-): StoredOptions => {
+const createStoredOptionsFromResult = (storageResult, defaults) => {
   const source = storageResult ?? {};
-  const normalized: StoredOptions = { ...defaults };
-
+  const normalized = { ...defaults };
   storedOptionFieldNames.forEach((field) => {
     const value = normalizeStoredOption(source, field, defaults[field]);
     normalized[field] = value.trim();
   });
-
   return normalized;
 };
-
-const sanitizeStoredOptionsInput = (
-  input: StoredOptions,
-  defaults: StoredOptions
-): StoredOptions => {
-  const sanitized: StoredOptions = { ...defaults };
-
+const sanitizeStoredOptionsInput = (input, defaults) => {
+  const sanitized = { ...defaults };
   storedOptionFieldNames.forEach((field) => {
     const rawValue = input[field];
-
     if (typeof rawValue === "string" && rawValue.trim().length > 0) {
       sanitized[field] = rawValue.trim();
     }
   });
-
   return sanitized;
 };
-
-const hasStoredOptionsData = (options: StoredOptions): boolean =>
+const hasStoredOptionsData = (options) =>
   options.matchesUrl.trim().length > 0 &&
   options.projectTitle.trim().length > 0;
-
-const upsertOptionSet = (
-  collection: StoredOptionsCollection,
-  entry: StoredOptions
-): StoredOptionsCollection => {
+const upsertOptionSet = (collection, entry) => {
   const projectKey = getProjectTitleKey(entry.projectTitle);
-
   if (projectKey.length === 0) {
     return collection.slice();
   }
-
   const withoutDuplicate = collection.filter(
     (existing) => getProjectTitleKey(existing.projectTitle) !== projectKey
   );
-
   return [...withoutDuplicate, entry];
 };
-
-const normalizeStoredOptionCollection = (
-  rawCollection: unknown,
-  defaults: StoredOptions
-): StoredOptionsCollection => {
+const normalizeStoredOptionCollection = (rawCollection, defaults) => {
   if (!Array.isArray(rawCollection)) {
     return [];
   }
-
-  return rawCollection.reduce<StoredOptionsCollection>((acc, entry) => {
+  return rawCollection.reduce((acc, entry) => {
     if (!entry || typeof entry !== "object") {
       return acc;
     }
-
-    const sanitized = createStoredOptionsFromResult(
-      entry as StorageResult,
-      defaults
-    );
-
+    const sanitized = createStoredOptionsFromResult(entry, defaults);
     if (!hasStoredOptionsData(sanitized)) {
       return acc;
     }
-
     return upsertOptionSet(acc, sanitized);
   }, []);
 };
-
-const buildDisplayEntries = (
-  storedValues: StoredOptions
-): Array<[string, string]> => {
-  const entries: Array<[string, string]> = [];
-
+const buildDisplayEntries = (storedValues) => {
+  const entries = [];
   const matchesUrl = storedValues.matchesUrl.trim();
-
   if (matchesUrl.length > 0) {
     entries.push(["Matches URL", matchesUrl]);
   }
-
   additionalFieldConfigs.forEach((config) => {
     const value = storedValues[config.name];
-
     if (typeof value === "string" && value.trim().length > 0) {
       entries.push([config.label, value]);
     }
   });
-
   return entries;
 };
-
-const displaySelectedOptionSet = (optionSet?: StoredOptions): void => {
+const displaySelectedOptionSet = (optionSet) => {
   if (!savedUrlElement) {
     return;
   }
-
   const container = savedUrlElement;
   container.replaceChildren();
-
   if (!optionSet) {
     container.textContent = "No dataset selected.";
     return;
   }
-
   buildDisplayEntries(optionSet).forEach(([label, value]) => {
     const line = document.createElement("div");
     line.textContent = `${label}: ${value}`;
     container.appendChild(line);
   });
 };
-
-const populateDatasetSelect = (
-  optionSets: StoredOptionsCollection,
-  selectedKey: string | null
-): void => {
+const populateDatasetSelect = (optionSets, selectedKey) => {
   if (!datasetSelectElement) {
     return;
   }
-
   datasetSelectElement.replaceChildren();
-
   const placeholder = document.createElement("option");
   placeholder.value = "";
   placeholder.textContent = "Select a project";
   datasetSelectElement.appendChild(placeholder);
-
   optionSets.forEach((optionSet) => {
     const projectTitle = optionSet.projectTitle.trim();
     const option = document.createElement("option");
@@ -564,27 +374,18 @@ const populateDatasetSelect = (
     option.textContent = projectTitle || "(Untitled Project)";
     datasetSelectElement.appendChild(option);
   });
-
   const valueToSelect = selectedKey ?? "";
   datasetSelectElement.value = valueToSelect;
 };
-
-const applyOptionSetsState = (
-  optionSets: StoredOptionsCollection,
-  defaultOptions: StoredOptions,
-  preferredKey?: string | null
-): void => {
+const applyOptionSetsState = (optionSets, defaultOptions, preferredKey) => {
   cachedOptionSets = optionSets.map((entry) => ({ ...entry }));
-
-  let activeEntry: StoredOptions | undefined;
-
+  let activeEntry;
   if (preferredKey === undefined) {
     activeEntry =
       findOptionSetByKey(cachedOptionSets, selectedProjectTitleKey) ??
       (cachedOptionSets.length > 0
         ? cachedOptionSets[cachedOptionSets.length - 1]
         : undefined);
-
     selectedProjectTitleKey = activeEntry
       ? getProjectTitleKey(activeEntry.projectTitle)
       : null;
@@ -598,52 +399,37 @@ const applyOptionSetsState = (
       ? getProjectTitleKey(activeEntry.projectTitle)
       : null;
   }
-
   populateDatasetSelect(cachedOptionSets, selectedProjectTitleKey);
-
   displaySelectedOptionSet(activeEntry);
   fillFormFields(activeEntry ?? defaultOptions);
-
   void refreshWorkTimeForSelection();
-
   if (activeEntry) {
     void persistActiveDataset(activeEntry);
   }
 };
-
-const handleDatasetSelectionChange = (): void => {
+const handleDatasetSelectionChange = () => {
   if (!datasetSelectElement) {
     return;
   }
-
   const selectedValue = datasetSelectElement.value.trim();
   selectedProjectTitleKey = selectedValue.length > 0 ? selectedValue : null;
-
   const defaultOptions = createDefaultStoredOptions();
   const selectedSet = findOptionSetByKey(
     cachedOptionSets,
     selectedProjectTitleKey
   );
-
   clearStatus();
   displaySelectedOptionSet(selectedSet);
   fillFormFields(selectedSet ?? defaultOptions);
-
   void refreshWorkTimeForSelection();
-
   if (selectedSet) {
     void persistActiveDataset(selectedSet);
   }
 };
-
-const handleOptionsStorageChange = (
-  changes: OptionsStorageChangeMap,
-  areaName: string
-): void => {
+const handleOptionsStorageChange = (changes, areaName) => {
   if (areaName !== "local") {
     return;
   }
-
   if (isPersistingActiveDataset) {
     if (
       Object.prototype.hasOwnProperty.call(
@@ -654,18 +440,14 @@ const handleOptionsStorageChange = (
     ) {
       void refreshWorkTimeForSelection();
     }
-
     return;
   }
-
   let shouldReload = false;
   let shouldRefreshWorkTime = false;
-  let durationOverride: number | null = null;
-
+  let durationOverride = null;
   if (Object.prototype.hasOwnProperty.call(changes, OPTIONS_STORAGE_SETS_KEY)) {
     shouldReload = true;
   }
-
   if (
     Object.prototype.hasOwnProperty.call(
       changes,
@@ -675,7 +457,6 @@ const handleOptionsStorageChange = (
   ) {
     shouldRefreshWorkTime = true;
   }
-
   if (Object.prototype.hasOwnProperty.call(changes, ASSIGNMENTS_PAGE_URL_KEY)) {
     const newAssignmentsValue = sanitizeAssignmentsUrl(
       changes[ASSIGNMENTS_PAGE_URL_KEY]?.newValue
@@ -683,7 +464,6 @@ const handleOptionsStorageChange = (
     cachedAssignmentsUrl = newAssignmentsValue;
     setAssignmentsInputValue(newAssignmentsValue);
   }
-
   if (
     Object.prototype.hasOwnProperty.call(
       changes,
@@ -695,7 +475,6 @@ const handleOptionsStorageChange = (
       cachedOptionSets,
       selectedProjectTitleKey
     );
-
     if (selectedSet) {
       const durationMap = normalizeOptionsDurationMap(
         changes[OPTIONS_PROJECT_DURATIONS_KEY]?.newValue
@@ -706,7 +485,6 @@ const handleOptionsStorageChange = (
       }
     }
   }
-
   if (
     durationOverride === null &&
     Object.prototype.hasOwnProperty.call(changes, "lastSessionDurationMs")
@@ -716,14 +494,12 @@ const handleOptionsStorageChange = (
       durationOverride = Math.max(0, rawDuration);
     }
   }
-
   if (Object.prototype.hasOwnProperty.call(changes, "projectTitle")) {
     const rawTitle = changes.projectTitle?.newValue;
     const titleString =
       typeof rawTitle === "string" && rawTitle.trim().length > 0
         ? rawTitle.trim()
         : "";
-
     if (titleString.length > 0) {
       selectedProjectTitleKey = getProjectTitleKey(titleString);
       shouldRefreshWorkTime = true;
@@ -732,48 +508,35 @@ const handleOptionsStorageChange = (
       shouldRefreshWorkTime = true;
     }
   }
-
   if (shouldReload) {
     loadSavedOptions();
     return;
   }
-
   if (durationOverride !== null) {
     updateWorkTimeDisplay(durationOverride);
     shouldRefreshWorkTime = false;
   }
-
   if (shouldRefreshWorkTime) {
     void refreshWorkTimeForSelection();
   }
 };
-
-const getOptionsStorageOnChanged = (): OptionsStorageOnChanged | undefined => {
+const getOptionsStorageOnChanged = () => {
   if (typeof chrome === "undefined") {
     return undefined;
   }
-
-  const storage = (
-    chrome as { storage?: { onChanged?: OptionsStorageOnChanged } }
-  ).storage;
-
+  const storage = chrome.storage;
   return storage?.onChanged ?? undefined;
 };
-
-const attachOptionsStorageChangeListener = (): void => {
+const attachOptionsStorageChangeListener = () => {
   if (hasAttachedStorageListener) {
     return;
   }
-
   const storageOnChanged = getOptionsStorageOnChanged();
-
   if (!storageOnChanged || typeof storageOnChanged.addListener !== "function") {
     return;
   }
-
   storageOnChanged.addListener(handleOptionsStorageChange);
   hasAttachedStorageListener = true;
-
   window.addEventListener(
     "unload",
     () => {
@@ -788,49 +551,40 @@ const attachOptionsStorageChangeListener = (): void => {
     { once: true }
   );
 };
-
-const deleteSelectedDataset = (): void => {
+const deleteSelectedDataset = () => {
   if (!selectedProjectTitleKey) {
     reportStatus("Select a project to delete.");
     return;
   }
-
   const targetSet = findOptionSetByKey(
     cachedOptionSets,
     selectedProjectTitleKey
   );
-
   if (!targetSet) {
     reportStatus("Select a project to delete.");
     return;
   }
-
   const defaults = createDefaultStoredOptions();
   const targetKey = getProjectTitleKey(targetSet.projectTitle);
   const fallbackCollection = cachedOptionSets.filter(
     (entry) => getProjectTitleKey(entry.projectTitle) !== targetKey
   );
-
   selectedProjectTitleKey = null;
-
   const storageLocal = chrome?.storage?.local;
-
   if (!storageLocal || typeof storageLocal.get !== "function") {
     applyOptionSetsState(fallbackCollection, defaults, null);
     updateWorkTimeDisplay(0);
     reportStatus("Deleted.");
     return;
   }
-
-  const storageKeys: string[] = [
+  const storageKeys = [
     OPTIONS_STORAGE_SETS_KEY,
     OPTIONS_PROJECT_DURATIONS_KEY,
     ...storedOptionFieldNames,
     "projectTitle",
     "lastSessionDurationMs",
   ];
-
-  storageLocal.get(storageKeys, (result: Record<string, unknown>) => {
+  storageLocal.get(storageKeys, (result) => {
     if (chrome?.runtime?.lastError) {
       reportStatus(
         chrome.runtime.lastError.message ??
@@ -838,42 +592,30 @@ const deleteSelectedDataset = (): void => {
       );
       return;
     }
-
     const rawCollection = result[OPTIONS_STORAGE_SETS_KEY];
     let normalizedCollection = normalizeStoredOptionCollection(
       rawCollection,
       defaults
     );
-
-    const legacyCandidate = createStoredOptionsFromResult(
-      result as StorageResult,
-      defaults
-    );
-
+    const legacyCandidate = createStoredOptionsFromResult(result, defaults);
     if (hasStoredOptionsData(legacyCandidate)) {
       normalizedCollection = upsertOptionSet(
         normalizedCollection,
         legacyCandidate
       );
     }
-
     const updatedCollection = normalizedCollection.filter(
       (entry) => getProjectTitleKey(entry.projectTitle) !== targetKey
     );
-
     const durationMap = normalizeOptionsDurationMap(
       result[OPTIONS_PROJECT_DURATIONS_KEY]
     );
-
     delete durationMap[targetSet.projectTitle.trim()];
-
-    const updates: Record<string, unknown> = {
+    const updates = {
       [OPTIONS_STORAGE_SETS_KEY]: updatedCollection,
       [OPTIONS_PROJECT_DURATIONS_KEY]: durationMap,
     };
-
-    const preferredKey: string | null = null;
-
+    const preferredKey = null;
     if (updatedCollection.length === 0) {
       storedOptionFieldNames.forEach((field) => {
         updates[field] = defaults[field];
@@ -881,7 +623,6 @@ const deleteSelectedDataset = (): void => {
       updates.projectTitle = "";
       updates.lastSessionDurationMs = 0;
     }
-
     storageLocal.set(updates, () => {
       if (chrome?.runtime?.lastError) {
         reportStatus(
@@ -890,49 +631,38 @@ const deleteSelectedDataset = (): void => {
         );
         return;
       }
-
       applyOptionSetsState(updatedCollection, defaults, preferredKey);
       updateWorkTimeDisplay(0);
       reportStatus("Deleted.");
     });
   });
 };
-
-const reportStatus = (message: string): void => {
+const reportStatus = (message) => {
   if (!statusElement) {
     return;
   }
-
   statusElement.textContent = message;
 };
-
-const clearStatus = (): void => {
+const clearStatus = () => {
   if (!statusElement) {
     return;
   }
-
   statusElement.textContent = "";
 };
-
-const fillFormFields = (storedValues: StoredOptions): void => {
+const fillFormFields = (storedValues) => {
   if (inputElement) {
     inputElement.value = storedValues.matchesUrl;
   }
-
   additionalFieldConfigs.forEach((config) => {
     const input = additionalInputs[config.name];
-
     if (!input) {
       return;
     }
-
     input.value = storedValues[config.name];
   });
 };
-
-const loadSavedOptions = (): void => {
+const loadSavedOptions = () => {
   const defaultOptions = createDefaultStoredOptions();
-
   if (
     typeof chrome === "undefined" ||
     !chrome.storage?.local ||
@@ -941,12 +671,7 @@ const loadSavedOptions = (): void => {
     applyOptionSetsState(cachedOptionSets, defaultOptions);
     return;
   }
-
-  const storageKeys: string[] = [
-    OPTIONS_STORAGE_SETS_KEY,
-    ...storedOptionFieldNames,
-  ];
-
+  const storageKeys = [OPTIONS_STORAGE_SETS_KEY, ...storedOptionFieldNames];
   chrome.storage.local.get(storageKeys, (result) => {
     if (chrome?.runtime?.lastError) {
       reportStatus(
@@ -955,77 +680,56 @@ const loadSavedOptions = (): void => {
       applyOptionSetsState([], defaultOptions);
       return;
     }
-
-    const rawCollection = (result as Record<string, unknown>)[
-      OPTIONS_STORAGE_SETS_KEY
-    ];
-
+    const rawCollection = result[OPTIONS_STORAGE_SETS_KEY];
     const normalizedCollection = normalizeStoredOptionCollection(
       rawCollection,
       defaultOptions
     );
-
     const legacyCandidate = createStoredOptionsFromResult(
-      result as StorageResult,
+      result,
       defaultOptions
     );
-
     const preferredKey = hasStoredOptionsData(legacyCandidate)
       ? getProjectTitleKey(legacyCandidate.projectTitle)
       : undefined;
-
     const resolvedCollection = hasStoredOptionsData(legacyCandidate)
       ? upsertOptionSet(normalizedCollection, legacyCandidate)
       : normalizedCollection;
-
     applyOptionSetsState(resolvedCollection, defaultOptions, preferredKey);
     clearStatus();
   });
 };
-
-const collectFormValues = (): StoredOptions => {
+const collectFormValues = () => {
   const defaults = createDefaultStoredOptions();
-
   const matchesUrl = inputElement?.value.trim() ?? "";
-
-  const collected: StoredOptions = {
+  const collected = {
     ...defaults,
     matchesUrl,
   };
-
   additionalFieldConfigs.forEach((config) => {
     const input = additionalInputs[config.name];
     const trimmedValue = input?.value.trim() ?? "";
-
     if (trimmedValue.length > 0) {
       collected[config.name] = trimmedValue;
       return;
     }
-
     const defaultValue = getDefaultValueForConfig(config);
-
     if (defaultValue.length > 0) {
       collected[config.name] = defaultValue;
     }
   });
-
   return collected;
 };
-
-const saveOptions = (values: StoredOptions): void => {
+const saveOptions = (values) => {
   const defaults = createDefaultStoredOptions();
   const sanitizedEntry = sanitizeStoredOptionsInput(values, defaults);
-
   if (!hasStoredOptionsData(sanitizedEntry)) {
     reportStatus("Matches URL and Project Title are required.");
     return;
   }
-
   const selectedKey = getProjectTitleKey(sanitizedEntry.projectTitle);
-
   const storageLocal =
     typeof chrome !== "undefined" ? chrome.storage?.local : undefined;
-
   if (
     !storageLocal ||
     typeof storageLocal.get !== "function" ||
@@ -1036,7 +740,6 @@ const saveOptions = (values: StoredOptions): void => {
     reportStatus("Saved.");
     return;
   }
-
   storageLocal.get([OPTIONS_STORAGE_SETS_KEY], (result) => {
     if (chrome?.runtime?.lastError) {
       reportStatus(
@@ -1044,17 +747,14 @@ const saveOptions = (values: StoredOptions): void => {
       );
       return;
     }
-
     const existingCollection = normalizeStoredOptionCollection(
-      (result as Record<string, unknown>)[OPTIONS_STORAGE_SETS_KEY],
+      result[OPTIONS_STORAGE_SETS_KEY],
       defaults
     );
-
     const updatedCollection = upsertOptionSet(
       existingCollection,
       sanitizedEntry
     );
-
     storageLocal.set(
       {
         [OPTIONS_STORAGE_SETS_KEY]: updatedCollection,
@@ -1068,41 +768,33 @@ const saveOptions = (values: StoredOptions): void => {
           );
           return;
         }
-
         applyOptionSetsState(updatedCollection, defaults, selectedKey);
         reportStatus("Saved.");
       }
     );
   });
 };
-
-const requestProjectDeletion = (): void => {
+const requestProjectDeletion = () => {
   if (!selectedProjectTitleKey) {
     reportStatus("Select a project to delete.");
     return;
   }
-
   const targetSet = findOptionSetByKey(
     cachedOptionSets,
     selectedProjectTitleKey
   );
-
   if (!targetSet) {
     reportStatus("Select a project to delete.");
     return;
   }
-
   const projectLabel =
     targetSet.projectTitle.trim().length > 0
       ? targetSet.projectTitle.trim()
       : "this project";
-
-  const handleConfirm = (): void => {
+  const handleConfirm = () => {
     deleteSelectedDataset();
   };
-
   const modalApi = getWorkTimerModal();
-
   if (modalApi) {
     modalApi.showConfirmation({
       message: `Are you sure you want to delete "${projectLabel}"?`,
@@ -1112,30 +804,22 @@ const requestProjectDeletion = (): void => {
     });
     return;
   }
-
   const shouldDelete = window.confirm(
     `Are you sure you want to delete "${projectLabel}"?`
   );
-
   if (shouldDelete) {
     handleConfirm();
   }
 };
-
 if (formElement instanceof HTMLFormElement) {
   if (inputElement) {
     inputElement.required = true;
   }
-
-  const submitButton = formElement.querySelector<HTMLButtonElement>(
-    'button[type="submit"]'
-  );
-
+  const submitButton = formElement.querySelector('button[type="submit"]');
   additionalFieldConfigs.forEach((config) => {
     const label = document.createElement("label");
     label.setAttribute("for", config.id);
     label.textContent = config.label;
-
     const input = document.createElement("input");
     input.type = config.type ?? "text";
     input.id = config.id;
@@ -1144,14 +828,11 @@ if (formElement instanceof HTMLFormElement) {
     if (config.placeholder) {
       input.placeholder = config.placeholder;
     }
-
     const defaultValue = getDefaultValueForConfig(config);
     if (defaultValue.length > 0) {
       input.value = defaultValue;
     }
-
     additionalInputs[config.name] = input;
-
     if (submitButton) {
       formElement.insertBefore(label, submitButton);
       formElement.insertBefore(input, submitButton);
@@ -1160,54 +841,43 @@ if (formElement instanceof HTMLFormElement) {
       formElement.appendChild(input);
     }
   });
-
   formElement.addEventListener("submit", (event) => {
     event.preventDefault();
-
     if (!inputElement) {
       return;
     }
-
     const values = collectFormValues();
-
     saveOptions(values);
   });
 }
-
 if (assignmentsFormElement) {
   assignmentsFormElement.addEventListener("submit", (event) => {
     event.preventDefault();
-
     const value = assignmentsInputElement?.value ?? "";
     saveAssignmentsUrl(value);
   });
 }
-
 if (assignmentsInputElement) {
   assignmentsInputElement.addEventListener("input", (event) => {
-    const target = event.currentTarget as HTMLInputElement;
+    const target = event.currentTarget;
     cachedAssignmentsUrl = target.value.trim();
   });
 }
-
 if (datasetSelectElement) {
   datasetSelectElement.addEventListener("change", () => {
     handleDatasetSelectionChange();
   });
 }
-
 if (deleteButtonElement) {
   deleteButtonElement.addEventListener("click", () => {
     requestProjectDeletion();
   });
 }
-
-const initializeOptionsPage = (): void => {
+const initializeOptionsPage = () => {
   attachOptionsStorageChangeListener();
   loadAssignmentsUrl();
   loadSavedOptions();
 };
-
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", () => {
     initializeOptionsPage();
