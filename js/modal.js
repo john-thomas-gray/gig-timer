@@ -1,12 +1,12 @@
 "use strict";
 const MODAL_STYLE_ID = "work-timer-modal-styles";
 const ensureModalStyles = () => {
-    if (document.getElementById(MODAL_STYLE_ID)) {
-        return;
-    }
-    const style = document.createElement("style");
-    style.id = MODAL_STYLE_ID;
-    style.textContent = `
+  if (document.getElementById(MODAL_STYLE_ID)) {
+    return;
+  }
+  const style = document.createElement("style");
+  style.id = MODAL_STYLE_ID;
+  style.textContent = `
     .wt-modal-overlay {
       position: fixed;
       inset: 0;
@@ -75,82 +75,81 @@ const ensureModalStyles = () => {
       background: #b91c1c;
     }
   `;
-    document.head.appendChild(style);
+  document.head.appendChild(style);
 };
 let activeModal = null;
 const closeActiveModal = () => {
-    if (!activeModal) {
-        return;
-    }
-    activeModal.overlay.remove();
-    activeModal = null;
+  if (!activeModal) {
+    return;
+  }
+  activeModal.overlay.remove();
+  activeModal = null;
 };
 const showConfirmationModal = (options) => {
-    ensureModalStyles();
+  ensureModalStyles();
+  closeActiveModal();
+  const overlay = document.createElement("div");
+  overlay.className = "wt-modal-overlay";
+  overlay.setAttribute("role", "presentation");
+  const modal = document.createElement("div");
+  modal.className = "wt-modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-labelledby", "wt-modal-heading");
+  const heading = document.createElement("h2");
+  heading.id = "wt-modal-heading";
+  heading.textContent = "Confirm Deletion";
+  const message = document.createElement("p");
+  message.textContent = options.message;
+  const buttonRow = document.createElement("div");
+  buttonRow.className = "wt-modal-buttons";
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.textContent = options.cancelText ?? "No";
+  cancelButton.dataset.variant = "cancel";
+  const confirmButton = document.createElement("button");
+  confirmButton.type = "button";
+  confirmButton.textContent = options.confirmText ?? "Yes";
+  confirmButton.dataset.variant = "confirm";
+  buttonRow.appendChild(cancelButton);
+  buttonRow.appendChild(confirmButton);
+  modal.appendChild(heading);
+  modal.appendChild(message);
+  modal.appendChild(buttonRow);
+  overlay.appendChild(modal);
+  const cleanup = () => {
     closeActiveModal();
-    const overlay = document.createElement("div");
-    overlay.className = "wt-modal-overlay";
-    overlay.setAttribute("role", "presentation");
-    const modal = document.createElement("div");
-    modal.className = "wt-modal";
-    modal.setAttribute("role", "dialog");
-    modal.setAttribute("aria-modal", "true");
-    modal.setAttribute("aria-labelledby", "wt-modal-heading");
-    const heading = document.createElement("h2");
-    heading.id = "wt-modal-heading";
-    heading.textContent = "Confirm Deletion";
-    const message = document.createElement("p");
-    message.textContent = options.message;
-    const buttonRow = document.createElement("div");
-    buttonRow.className = "wt-modal-buttons";
-    const cancelButton = document.createElement("button");
-    cancelButton.type = "button";
-    cancelButton.textContent = options.cancelText ?? "No";
-    cancelButton.dataset.variant = "cancel";
-    const confirmButton = document.createElement("button");
-    confirmButton.type = "button";
-    confirmButton.textContent = options.confirmText ?? "Yes";
-    confirmButton.dataset.variant = "confirm";
-    buttonRow.appendChild(cancelButton);
-    buttonRow.appendChild(confirmButton);
-    modal.appendChild(heading);
-    modal.appendChild(message);
-    modal.appendChild(buttonRow);
-    overlay.appendChild(modal);
-    const cleanup = () => {
-        closeActiveModal();
-    };
-    cancelButton.addEventListener("click", () => {
-        cleanup();
-    });
-    confirmButton.addEventListener("click", () => {
-        cleanup();
-        options.onConfirm();
-    });
-    overlay.addEventListener("click", (event) => {
-        if (event.target === overlay) {
-            cleanup();
-        }
-    });
-    overlay.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") {
-            event.preventDefault();
-            cleanup();
-        }
-    });
-    document.body.appendChild(overlay);
-    activeModal = {
-        overlay,
-        modal,
-        confirmButton,
-        cancelButton,
-    };
-    window.setTimeout(() => {
-        cancelButton.focus();
-    }, 0);
+  };
+  cancelButton.addEventListener("click", () => {
+    cleanup();
+  });
+  confirmButton.addEventListener("click", () => {
+    cleanup();
+    options.onConfirm();
+  });
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      cleanup();
+    }
+  });
+  overlay.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cleanup();
+    }
+  });
+  document.body.appendChild(overlay);
+  activeModal = {
+    overlay,
+    modal,
+    confirmButton,
+    cancelButton,
+  };
+  window.setTimeout(() => {
+    cancelButton.focus();
+  }, 0);
 };
 const modalWindow = window;
 modalWindow.workTimerModal = {
-    showConfirmation: showConfirmationModal,
+  showConfirmation: showConfirmationModal,
 };
-//# sourceMappingURL=modal.js.map

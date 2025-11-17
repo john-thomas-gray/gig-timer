@@ -11,7 +11,6 @@ const workTimeValueElement = document.getElementById("work-time-value");
 const deleteButtonElement = document.getElementById("delete-button");
 const OPTIONS_STORAGE_SETS_KEY = "savedOptionSets";
 const OPTIONS_PROJECT_DURATIONS_KEY = "projectDurations";
-const ASSIGNMENTS_PAGE_URL_KEY = "assignmentsPageUrl";
 const getCurrentMonthYear = () => {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -80,7 +79,8 @@ let cachedOptionSets = [];
 let selectedProjectTitleKey = null;
 let hasAttachedStorageListener = false;
 let isPersistingActiveDataset = false;
-let cachedAssignmentsUrl = "";
+let cachedAssignmentsUrl =
+  typeof ASSIGNMENTS_PAGE_URL_KEY === "string" ? ASSIGNMENTS_PAGE_URL_KEY : "";
 const formatDurationForDisplay = (durationMs) => {
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
     return "00:00:00";
@@ -178,8 +178,12 @@ const refreshWorkTimeForSelection = async () => {
 };
 const loadAssignmentsUrl = () => {
   const applyValue = (value) => {
-    cachedAssignmentsUrl = value;
-    setAssignmentsInputValue(value);
+    const sanitized =
+      typeof value === "string" && value.trim().length > 0
+        ? value.trim()
+        : ASSIGNMENTS_PAGE_URL_KEY;
+    cachedAssignmentsUrl = sanitized ?? "";
+    setAssignmentsInputValue(cachedAssignmentsUrl);
   };
   if (
     typeof chrome === "undefined" ||
