@@ -1,51 +1,8 @@
 "use strict";
-const manifest =
-  typeof chrome !== "undefined" && chrome.runtime?.getManifest
-    ? chrome.runtime.getManifest()
-    : undefined;
-const manifestMatches =
-  manifest && manifest.content_scripts
-    ? Array.isArray(manifest.content_scripts)
-      ? manifest.content_scripts.flatMap((script) => script.matches ?? [])
-      : manifest.content_scripts.matches ?? []
-    : [];
+const manifest = chrome.runtime.getManifest();
+const manifestMatches = manifest.content_scripts.matches ?? []
 const OPTIONS_STORAGE_SETS_KEY_CONTENT = "savedOptionSets";
-const doesUrlMatchPattern = (url, pattern) => {
-  const regex = convertMatchPatternToRegExp(pattern);
-  if (regex) {
-    return regex.test(url);
-  }
-  return url.includes(pattern);
-};
-const convertMatchPatternToRegExp = (pattern) => {
-  if (pattern === "<all_urls>") {
-    return /^(https?|file|ftp|chrome-extension):\/\/.*/;
-  }
-  const matchPatternRegExp =
-    /^(?<scheme>\*|https?|file|ftp|chrome-extension):\/\/(?<host>\*|\*\.[^*/]+|[^*/]+)(?<path>\/.*)$/;
-  const match = matchPatternRegExp.exec(pattern);
-  if (!match || !match.groups) {
-    return null;
-  }
-  const groups = match.groups;
-  if (!groups.scheme || !groups.host || !groups.path) {
-    return null;
-  }
-  const { scheme, host, path } = groups;
-  const schemeRegex = scheme === "*" ? "(http|https)" : escapeRegex(scheme);
-  const hostRegex = (() => {
-    if (host === "*") {
-      return "[^/]+";
-    }
-    if (host.startsWith("*.")) {
-      return `(?:[^/]+\\.)?${escapeRegex(host.slice(2))}`;
-    }
-    return escapeRegex(host);
-  })();
-  const pathRegex = escapeRegex(path).replace(/\\\*/g, ".*");
-  return new RegExp(`^${schemeRegex}://${hostRegex}${pathRegex}$`);
-};
-const escapeRegex = (value) => value.replace(/[.*^$+?()[\]{}|\\]/g, "\\$&");
+
 const extractMatchesFromOptionSets = (raw) => {
   if (!Array.isArray(raw)) {
     return [];

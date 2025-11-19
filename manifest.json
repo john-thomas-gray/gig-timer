@@ -11,9 +11,8 @@
   "permissions": ["storage"],
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["https://localization.pixelogicmedia.com/*"],
       "js": [
-        "js/globals.js",
         "js/timer.js",
         "js/content.js",
         "js/assignments.js"
@@ -22,8 +21,8 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["js/assignmentsBridge.js"],
-      "matches": ["<all_urls>"]
+      "matches": ["https://localization.pixelogicmedia.com/*"],
+      "resources": ["js/assignmentsBridge.js"]
     }
   ]
 }
