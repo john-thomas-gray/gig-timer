@@ -3,22 +3,6 @@ const manifest = chrome.runtime.getManifest();
 const manifestMatches = manifest.content_scripts.matches ?? []
 const OPTIONS_STORAGE_SETS_KEY_CONTENT = "savedOptionSets";
 
-const extractMatchesFromOptionSets = (raw) => {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  const matches = new Set();
-  raw.forEach((entry) => {
-    if (!entry || typeof entry !== "object") {
-      return;
-    }
-    const matchValue = entry.matchesUrl;
-    if (typeof matchValue === "string" && matchValue.trim().length > 0) {
-      matches.add(matchValue.trim());
-    }
-  });
-  return Array.from(matches);
-};
 const getStoredMatches = () =>
   new Promise((resolve) => {
     if (
@@ -30,7 +14,7 @@ const getStoredMatches = () =>
       return;
     }
     chrome.storage.local.get(
-      [OPTIONS_STORAGE_SETS_KEY_CONTENT, "matchesUrl"],
+      [OPTIONS_STORAGE_SETS_KEY_CONTENT, "workspaceUrl"],
       (result) => {
         if (chrome?.runtime?.lastError) {
           console.warn(
@@ -40,14 +24,14 @@ const getStoredMatches = () =>
           resolve([]);
           return;
         }
-        const fromOptionSets = extractMatchesFromOptionSets(
-          result[OPTIONS_STORAGE_SETS_KEY_CONTENT]
+        const fromOptionSets = extractValuesFromStoredProjects(
+          result[OPTIONS_STORAGE_SETS_KEY_CONTENT], "workspaceUrl"
         );
         if (fromOptionSets.length > 0) {
           resolve(fromOptionSets);
           return;
         }
-        const legacyValue = result.matchesUrl;
+        const legacyValue = result.workspaceUrl;
         if (typeof legacyValue === "string" && legacyValue.trim().length > 0) {
           resolve([legacyValue.trim()]);
           return;
@@ -81,4 +65,3 @@ const initialize = async () => {
   evaluateMatches(manifestMatches);
 };
 void initialize();
-//# sourceMappingURL=content.js.map

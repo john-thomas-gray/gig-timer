@@ -3,7 +3,7 @@ const POPUP_GOOGLE_APPS_SCRIPT_ENDPOINT =
   "https://script.google.com/macros/s/AKfycbwKRKegGwQLUNs0ANSTfz7_L-944XcWJgtJxIUTUSnLV9liUD1AXxGPVmdHCVWqNs2A/exec";
 const POPUP_PROJECT_DURATIONS_KEY = "projectDurations";
 const POPUP_DATASET_FIELD_NAMES = [
-  "matchesUrl",
+  "workspaceUrl",
   "client",
   "studio",
   "genre",
@@ -14,7 +14,7 @@ const POPUP_DATASET_FIELD_NAMES = [
   "dateBooked",
 ];
 const datasetFieldElements = {
-  matchesUrl: document.getElementById("summary-matches-url"),
+  workspaceUrl: document.getElementById("summary-matches-url"),
   client: document.getElementById("summary-client"),
   studio: document.getElementById("summary-studio"),
   genre: document.getElementById("summary-genre"),

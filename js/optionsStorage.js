@@ -1,7 +1,7 @@
 "use strict";
 
 const OPTIONS_STORAGE_SETS_KEY = "savedOptionSets";
-const LEGACY_MATCHES_STORAGE_KEY = "matchesUrl";
+const LEGACY_MATCHES_STORAGE_KEY = "workspaceUrl";
 
 const getChromeLocalStorage = () => {
   if (typeof chrome === "undefined") {
@@ -128,7 +128,7 @@ const getFirstStringFromRawValue = (raw, fallback = "") => {
   return fallback;
 };
 
-const extractMatchesFromOptionSets = (raw) => {
+const extractValuesFromStoredProjects = (raw) => {
   if (!Array.isArray(raw)) {
     return [];
   }
@@ -137,7 +137,7 @@ const extractMatchesFromOptionSets = (raw) => {
     if (!entry || typeof entry !== "object") {
       return;
     }
-    extractNonEmptyTrimmedStrings(entry.matchesUrl).forEach((value) => {
+    extractNonEmptyTrimmedStrings(entry.workspaceUrl).forEach((value) => {
       matches.add(value);
     });
   });
@@ -151,7 +151,7 @@ export {
   hasChromeLocalStorageMethod,
   extractNonEmptyTrimmedStrings,
   getFirstStringFromRawValue,
-  extractMatchesFromOptionSets,
+  extractValuesFromStoredProjects,
   sanitizeToNonEmptyString,
   formatDurationAsClock,
   normalizeDurationMap,

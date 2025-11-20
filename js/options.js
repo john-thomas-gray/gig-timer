@@ -71,7 +71,7 @@ const additionalFieldConfigs = [
   },
 ];
 const storedOptionFieldNames = [
-  "matchesUrl",
+  "workspaceUrl",
   ...additionalFieldConfigs.map((config) => config.name),
 ];
 const additionalInputs = {};
@@ -261,7 +261,7 @@ const getDefaultValueForConfig = (config) => {
   return config.defaultValue ?? "";
 };
 const createDefaultStoredOptions = () => ({
-  matchesUrl: "",
+  workspaceUrl: "",
   projectTitle: "",
   client: "",
   studio: "",
@@ -305,7 +305,7 @@ const sanitizeStoredOptionsInput = (input, defaults) => {
   return sanitized;
 };
 const hasStoredOptionsData = (options) =>
-  options.matchesUrl.trim().length > 0 &&
+  options.workspaceUrl.trim().length > 0 &&
   options.projectTitle.trim().length > 0;
 const upsertOptionSet = (collection, entry) => {
   const projectKey = getProjectTitleKey(entry.projectTitle);
@@ -334,9 +334,9 @@ const normalizeStoredOptionCollection = (rawCollection, defaults) => {
 };
 const buildDisplayEntries = (storedValues) => {
   const entries = [];
-  const matchesUrl = storedValues.matchesUrl.trim();
-  if (matchesUrl.length > 0) {
-    entries.push(["Matches URL", matchesUrl]);
+  const workspaceUrl = storedValues.workspaceUrl.trim();
+  if (workspaceUrl.length > 0) {
+    entries.push(["Digital Workspace URL", workspaceUrl]);
   }
   additionalFieldConfigs.forEach((config) => {
     const value = storedValues[config.name];
@@ -655,7 +655,7 @@ const clearStatus = () => {
 };
 const fillFormFields = (storedValues) => {
   if (inputElement) {
-    inputElement.value = storedValues.matchesUrl;
+    inputElement.value = storedValues.workspaceUrl;
   }
   additionalFieldConfigs.forEach((config) => {
     const input = additionalInputs[config.name];
@@ -705,10 +705,10 @@ const loadSavedOptions = () => {
 };
 const collectFormValues = () => {
   const defaults = createDefaultStoredOptions();
-  const matchesUrl = inputElement?.value.trim() ?? "";
+  const workspaceUrl = inputElement?.value.trim() ?? "";
   const collected = {
     ...defaults,
-    matchesUrl,
+    workspaceUrl,
   };
   additionalFieldConfigs.forEach((config) => {
     const input = additionalInputs[config.name];
@@ -728,7 +728,7 @@ const saveOptions = (values) => {
   const defaults = createDefaultStoredOptions();
   const sanitizedEntry = sanitizeStoredOptionsInput(values, defaults);
   if (!hasStoredOptionsData(sanitizedEntry)) {
-    reportStatus("Matches URL and Project Title are required.");
+    reportStatus("Digital Workspace URL and Project Title are required.");
     return;
   }
   const selectedKey = getProjectTitleKey(sanitizedEntry.projectTitle);

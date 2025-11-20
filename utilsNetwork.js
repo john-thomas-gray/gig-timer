@@ -36,3 +36,26 @@ export const doesUrlMatchPattern = (url, pattern) => {
   }
   return url.includes(pattern);
 }
+
+const extractValuesFromStoredProjects = (storedProjects, propertyKey) => {
+  if (!Array.isArray(storedProjects)) {
+    return [];
+  }
+  if (typeof propertyKey !== "string" || propertyKey.trim().length === 0) {
+    throw new Error("propertyKey must be a non-empty string");
+  }
+
+  const values = new Set();
+
+  storedProjects.forEach((project) => {
+    if (!project || typeof project !== "object") {
+      return;
+    }
+    const value = project[propertyKey];
+    if (typeof value === "string" && value.trim().length > 0) {
+      values.add(value.trim());
+    }
+  });
+
+  return Array.from(values);
+};
