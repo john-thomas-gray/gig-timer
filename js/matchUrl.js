@@ -1,4 +1,6 @@
 "use strict";
+import {doesUrlMatchPattern, getStoredWorkspaceUrls} from utilsNetwork.js;
+
 const manifest = chrome.runtime.getManifest();
 const manifestMatches = manifest.content_scripts.matches ?? []
 

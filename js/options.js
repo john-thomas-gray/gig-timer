@@ -1,4 +1,6 @@
 "use strict";
+const ASSIGNMENTS_PAGE_URL_KEY =
+  "https://localization.pixelogicmedia.com/individuals/8587/new_dashboard?english_services=true";
 const getWorkTimerModal = () => window.workTimerModal;
 const savedUrlElement = document.getElementById("saved-url");
 const assignmentsFormElement = document.getElementById("assignments-form");
@@ -336,7 +338,7 @@ const buildDisplayEntries = (storedValues) => {
   const entries = [];
   const workspaceUrl = storedValues.workspaceUrl.trim();
   if (workspaceUrl.length > 0) {
-    entries.push(["Digital Workspace URL", workspaceUrl]);
+    entries.push(["Workspace URL", workspaceUrl]);
   }
   additionalFieldConfigs.forEach((config) => {
     const value = storedValues[config.name];
@@ -728,7 +730,7 @@ const saveOptions = (values) => {
   const defaults = createDefaultStoredOptions();
   const sanitizedEntry = sanitizeStoredOptionsInput(values, defaults);
   if (!hasStoredOptionsData(sanitizedEntry)) {
-    reportStatus("Digital Workspace URL and Project Title are required.");
+    reportStatus("Workspace URL and Project Title are required.");
     return;
   }
   const selectedKey = getProjectTitleKey(sanitizedEntry.projectTitle);
