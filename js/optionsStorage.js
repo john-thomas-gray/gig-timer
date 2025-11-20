@@ -128,7 +128,7 @@ const getFirstStringFromRawValue = (raw, fallback = "") => {
   return fallback;
 };
 
-const retrieveValuesFromStoredProjects = (raw) => {
+const validateAndReturnValues = (raw) => {
   if (!Array.isArray(raw)) {
     return [];
   }
@@ -151,7 +151,7 @@ export {
   hasChromeLocalStorageMethod,
   extractNonEmptyTrimmedStrings,
   getFirstStringFromRawValue,
-  retrieveValuesFromStoredProjects,
+  validateAndReturnValues,
   sanitizeToNonEmptyString,
   formatDurationAsClock,
   normalizeDurationMap,

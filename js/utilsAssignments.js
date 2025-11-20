@@ -54,7 +54,7 @@ const saveAssignmentsUrl = (rawValue) => {
     }
     cachedAssignmentsUrl = trimmedValue;
     setAssignmentsInputValue(trimmedValue);
-    reportStatus("Assignments page saved.");
+
   });
 };
 

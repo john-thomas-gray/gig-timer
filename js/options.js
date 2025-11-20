@@ -643,18 +643,6 @@ const deleteSelectedDataset = () => {
     });
   });
 };
-const reportStatus = (message) => {
-  if (!statusElement) {
-    return;
-  }
-  statusElement.textContent = message;
-};
-const clearStatus = () => {
-  if (!statusElement) {
-    return;
-  }
-  statusElement.textContent = "";
-};
 const fillFormFields = (storedValues) => {
   if (inputElement) {
     inputElement.value = storedValues.workspaceUrl;

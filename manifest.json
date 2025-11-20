@@ -14,6 +14,7 @@
       "matches": ["https://localization.pixelogicmedia.com/*"],
       "js": [
         "js/timer.js",
+        "js/checkCurrentUrl.js",
         "js/assignments.js"
       ]
     }
@@ -21,7 +22,7 @@
   "web_accessible_resources": [
     {
       "matches": ["https://localization.pixelogicmedia.com/*"],
-      "resources": ["js/assignmentsBridge.js"]
+      "resources": ["js/assignmentsBridge.js", "js/urlUtils.js", "js/assignments.js"]
     }
   ]
 }
