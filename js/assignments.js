@@ -3,7 +3,7 @@
 (() => {
   const escapeRegex = (value) => value.replace(/[.*^$+?()[\]{}|\\]/g, "\\$&");
 
-  const convertMatchPatternToRegExp = (pattern) => {
+  const convertUrlToRegExp = (pattern) => {
     if (pattern === "<all_urls>") {
       return /^(https?|file|ftp|chrome-extension):\/\/.*/;
     }
@@ -29,7 +29,7 @@
     const trimmed = storedUrl.trim();
     if (!trimmed) return false;
     if (trimmed.includes("*")) {
-      const pattern = convertMatchPatternToRegExp(trimmed);
+      const pattern = convertUrlToRegExp(trimmed);
       return pattern
         ? pattern.test(currentUrl)
         : currentUrl.includes(trimmed.replace(/\*/g, ""));

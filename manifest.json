@@ -14,7 +14,7 @@
       "matches": ["https://localization.pixelogicmedia.com/*"],
       "js": [
         "js/timer.js",
-        "js/content.js",
+        "js/matchUrl.js",
         "js/assignments.js"
       ]
     }

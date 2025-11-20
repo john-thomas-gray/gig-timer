@@ -1,6 +1,6 @@
 "use strict";
 
-const OPTIONS_STORAGE_SETS_KEY = "savedOptionSets";
+const OPTIONS_STORAGE_SETS_KEY = "savedProjects";
 const LEGACY_MATCHES_STORAGE_KEY = "workspaceUrl";
 
 const getChromeLocalStorage = () => {
@@ -128,7 +128,7 @@ const getFirstStringFromRawValue = (raw, fallback = "") => {
   return fallback;
 };
 
-const extractValuesFromStoredProjects = (raw) => {
+const retrieveValuesFromStoredProjects = (raw) => {
   if (!Array.isArray(raw)) {
     return [];
   }
@@ -151,7 +151,7 @@ export {
   hasChromeLocalStorageMethod,
   extractNonEmptyTrimmedStrings,
   getFirstStringFromRawValue,
-  extractValuesFromStoredProjects,
+  retrieveValuesFromStoredProjects,
   sanitizeToNonEmptyString,
   formatDurationAsClock,
   normalizeDurationMap,

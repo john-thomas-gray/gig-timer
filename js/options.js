@@ -9,7 +9,7 @@ const statusElement = document.getElementById("status");
 const datasetSelectElement = document.getElementById("dataset-select");
 const workTimeValueElement = document.getElementById("work-time-value");
 const deleteButtonElement = document.getElementById("delete-button");
-const OPTIONS_STORAGE_SETS_KEY = "savedOptionSets";
+const OPTIONS_STORAGE_SETS_KEY = "savedProjects";
 const OPTIONS_PROJECT_DURATIONS_KEY = "projectDurations";
 const getCurrentMonthYear = () => {
   const now = new Date();
@@ -75,7 +75,7 @@ const storedOptionFieldNames = [
   ...additionalFieldConfigs.map((config) => config.name),
 ];
 const additionalInputs = {};
-let cachedOptionSets = [];
+let cachedStoredProjects = [];
 let selectedProjectTitleKey = null;
 let hasAttachedStorageListener = false;
 let isPersistingActiveDataset = false;
@@ -101,7 +101,7 @@ const updateWorkTimeDisplay = (durationMs) => {
   workTimeValueElement.textContent = formatDurationForDisplay(durationMs);
 };
 const getProjectTitleKey = (value) => value.trim().toLowerCase();
-const findOptionSetByKey = (collection, key) => {
+const findStoredProjectByKey = (collection, key) => {
   if (!key) {
     return undefined;
   }
@@ -165,8 +165,8 @@ const refreshWorkTimeForSelection = async () => {
     updateWorkTimeDisplay(0);
     return;
   }
-  const selectedSet = findOptionSetByKey(
-    cachedOptionSets,
+  const selectedSet = findStoredProjectByKey(
+    cachedStoredProjects,
     selectedProjectTitleKey
   );
   if (!selectedSet) {
@@ -307,7 +307,7 @@ const sanitizeStoredOptionsInput = (input, defaults) => {
 const hasStoredOptionsData = (options) =>
   options.workspaceUrl.trim().length > 0 &&
   options.projectTitle.trim().length > 0;
-const upsertOptionSet = (collection, entry) => {
+const upsertStoredProject = (collection, entry) => {
   const projectKey = getProjectTitleKey(entry.projectTitle);
   if (projectKey.length === 0) {
     return collection.slice();
@@ -329,7 +329,7 @@ const normalizeStoredOptionCollection = (rawCollection, defaults) => {
     if (!hasStoredOptionsData(sanitized)) {
       return acc;
     }
-    return upsertOptionSet(acc, sanitized);
+    return upsertStoredProject(acc, sanitized);
   }, []);
 };
 const buildDisplayEntries = (storedValues) => {
@@ -346,7 +346,7 @@ const buildDisplayEntries = (storedValues) => {
   });
   return entries;
 };
-const displaySelectedOptionSet = (optionSet) => {
+const displaySelectedStoredProject = (optionSet) => {
   if (!savedUrlElement) {
     return;
   }
@@ -381,14 +381,14 @@ const populateDatasetSelect = (optionSets, selectedKey) => {
   const valueToSelect = selectedKey ?? "";
   datasetSelectElement.value = valueToSelect;
 };
-const applyOptionSetsState = (optionSets, defaultOptions, preferredKey) => {
-  cachedOptionSets = optionSets.map((entry) => ({ ...entry }));
+const applyStoredProjectsState = (optionSets, defaultOptions, preferredKey) => {
+  cachedStoredProjects = optionSets.map((entry) => ({ ...entry }));
   let activeEntry;
   if (preferredKey === undefined) {
     activeEntry =
-      findOptionSetByKey(cachedOptionSets, selectedProjectTitleKey) ??
-      (cachedOptionSets.length > 0
-        ? cachedOptionSets[cachedOptionSets.length - 1]
+      findStoredProjectByKey(cachedStoredProjects, selectedProjectTitleKey) ??
+      (cachedStoredProjects.length > 0
+        ? cachedStoredProjects[cachedStoredProjects.length - 1]
         : undefined);
     selectedProjectTitleKey = activeEntry
       ? getProjectTitleKey(activeEntry.projectTitle)
@@ -398,13 +398,13 @@ const applyOptionSetsState = (optionSets, defaultOptions, preferredKey) => {
     selectedProjectTitleKey = null;
   } else {
     activeEntry =
-      findOptionSetByKey(cachedOptionSets, preferredKey) ?? undefined;
+      findStoredProjectByKey(cachedStoredProjects, preferredKey) ?? undefined;
     selectedProjectTitleKey = activeEntry
       ? getProjectTitleKey(activeEntry.projectTitle)
       : null;
   }
-  populateDatasetSelect(cachedOptionSets, selectedProjectTitleKey);
-  displaySelectedOptionSet(activeEntry);
+  populateDatasetSelect(cachedStoredProjects, selectedProjectTitleKey);
+  displaySelectedStoredProject(activeEntry);
   fillFormFields(activeEntry ?? defaultOptions);
   void refreshWorkTimeForSelection();
   if (activeEntry) {
@@ -418,12 +418,12 @@ const handleDatasetSelectionChange = () => {
   const selectedValue = datasetSelectElement.value.trim();
   selectedProjectTitleKey = selectedValue.length > 0 ? selectedValue : null;
   const defaultOptions = createDefaultStoredOptions();
-  const selectedSet = findOptionSetByKey(
-    cachedOptionSets,
+  const selectedSet = findStoredProjectByKey(
+    cachedStoredProjects,
     selectedProjectTitleKey
   );
   clearStatus();
-  displaySelectedOptionSet(selectedSet);
+  displaySelectedStoredProject(selectedSet);
   fillFormFields(selectedSet ?? defaultOptions);
   void refreshWorkTimeForSelection();
   if (selectedSet) {
@@ -475,8 +475,8 @@ const handleOptionsStorageChange = (changes, areaName) => {
     ) &&
     selectedProjectTitleKey
   ) {
-    const selectedSet = findOptionSetByKey(
-      cachedOptionSets,
+    const selectedSet = findStoredProjectByKey(
+      cachedStoredProjects,
       selectedProjectTitleKey
     );
     if (selectedSet) {
@@ -560,8 +560,8 @@ const deleteSelectedDataset = () => {
     reportStatus("Select a project to delete.");
     return;
   }
-  const targetSet = findOptionSetByKey(
-    cachedOptionSets,
+  const targetSet = findStoredProjectByKey(
+    cachedStoredProjects,
     selectedProjectTitleKey
   );
   if (!targetSet) {
@@ -570,13 +570,13 @@ const deleteSelectedDataset = () => {
   }
   const defaults = createDefaultStoredOptions();
   const targetKey = getProjectTitleKey(targetSet.projectTitle);
-  const fallbackCollection = cachedOptionSets.filter(
+  const fallbackCollection = cachedStoredProjects.filter(
     (entry) => getProjectTitleKey(entry.projectTitle) !== targetKey
   );
   selectedProjectTitleKey = null;
   const storageLocal = chrome?.storage?.local;
   if (!storageLocal || typeof storageLocal.get !== "function") {
-    applyOptionSetsState(fallbackCollection, defaults, null);
+    applyStoredProjectsState(fallbackCollection, defaults, null);
     updateWorkTimeDisplay(0);
     reportStatus("Deleted.");
     return;
@@ -603,7 +603,7 @@ const deleteSelectedDataset = () => {
     );
     const legacyCandidate = createStoredOptionsFromResult(result, defaults);
     if (hasStoredOptionsData(legacyCandidate)) {
-      normalizedCollection = upsertOptionSet(
+      normalizedCollection = upsertStoredProject(
         normalizedCollection,
         legacyCandidate
       );
@@ -635,7 +635,7 @@ const deleteSelectedDataset = () => {
         );
         return;
       }
-      applyOptionSetsState(updatedCollection, defaults, preferredKey);
+      applyStoredProjectsState(updatedCollection, defaults, preferredKey);
       updateWorkTimeDisplay(0);
       reportStatus("Deleted.");
     });
@@ -672,7 +672,7 @@ const loadSavedOptions = () => {
     !chrome.storage?.local ||
     typeof chrome.storage.local.get !== "function"
   ) {
-    applyOptionSetsState(cachedOptionSets, defaultOptions);
+    applyStoredProjectsState(cachedStoredProjects, defaultOptions);
     return;
   }
   const storageKeys = [OPTIONS_STORAGE_SETS_KEY, ...storedOptionFieldNames];
@@ -681,7 +681,7 @@ const loadSavedOptions = () => {
       reportStatus(
         chrome.runtime.lastError.message ?? "An error occurred while loading."
       );
-      applyOptionSetsState([], defaultOptions);
+      applyStoredProjectsState([], defaultOptions);
       return;
     }
     const rawCollection = result[OPTIONS_STORAGE_SETS_KEY];
@@ -697,9 +697,9 @@ const loadSavedOptions = () => {
       ? getProjectTitleKey(legacyCandidate.projectTitle)
       : undefined;
     const resolvedCollection = hasStoredOptionsData(legacyCandidate)
-      ? upsertOptionSet(normalizedCollection, legacyCandidate)
+      ? upsertStoredProject(normalizedCollection, legacyCandidate)
       : normalizedCollection;
-    applyOptionSetsState(resolvedCollection, defaultOptions, preferredKey);
+    applyStoredProjectsState(resolvedCollection, defaultOptions, preferredKey);
     clearStatus();
   });
 };
@@ -739,8 +739,8 @@ const saveOptions = (values) => {
     typeof storageLocal.get !== "function" ||
     typeof storageLocal.set !== "function"
   ) {
-    const updatedCollection = upsertOptionSet(cachedOptionSets, sanitizedEntry);
-    applyOptionSetsState(updatedCollection, defaults, selectedKey);
+    const updatedCollection = upsertStoredProject(cachedStoredProjects, sanitizedEntry);
+    applyStoredProjectsState(updatedCollection, defaults, selectedKey);
     reportStatus("Saved.");
     return;
   }
@@ -755,7 +755,7 @@ const saveOptions = (values) => {
       result[OPTIONS_STORAGE_SETS_KEY],
       defaults
     );
-    const updatedCollection = upsertOptionSet(
+    const updatedCollection = upsertStoredProject(
       existingCollection,
       sanitizedEntry
     );
@@ -772,7 +772,7 @@ const saveOptions = (values) => {
           );
           return;
         }
-        applyOptionSetsState(updatedCollection, defaults, selectedKey);
+        applyStoredProjectsState(updatedCollection, defaults, selectedKey);
         reportStatus("Saved.");
       }
     );
@@ -783,8 +783,8 @@ const requestProjectDeletion = () => {
     reportStatus("Select a project to delete.");
     return;
   }
-  const targetSet = findOptionSetByKey(
-    cachedOptionSets,
+  const targetSet = findStoredProjectByKey(
+    cachedStoredProjects,
     selectedProjectTitleKey
   );
   if (!targetSet) {

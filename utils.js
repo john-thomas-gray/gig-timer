@@ -48,13 +48,13 @@ export const updateWorkTimeValueDisplay = (
 
 export const refreshWorkTimeForSelection = async (
   selectedProjectKey,
-  cachedOptionSets
+  cachedStoredProjects
 ) => {
   if (!selectedProjectKey) {
     updateWorkTimeValueDisplay(0);
     return;
   }
-  const selectedSet = findOptionSetByKey(cachedOptionSets, selectedProjectKey);
+  const selectedSet = findStoredProjectByKey(cachedStoredProjects, selectedProjectKey);
   if (!selectedSet) {
     updateWorkTimeValueDisplay(0);
     return;
