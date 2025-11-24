@@ -1,82 +1,15 @@
 "use strict";
-const ASSIGNMENTS_PAGE_URL_KEY = "https://localization.pixelogicmedia.com/individuals/8587/new_dashboard?english_services=true";
-(   () => {
-      const escapeRegex = (value) =>
-        value.replace(/[.*^$+?()[\]{}|\\]/g, "\\$&");
+  const  ASSIGNMENTS_STORAGE_KEY = "assignmentsPageUrl";
+(   async () => {
+      const { doesUrlMatch } = await import(
+        chrome.runtime.getURL("js/urlUtils.js")
+      );
 
-      const convertUrlToRegExp = (pattern) => {
-        if (pattern === "<all_urls>") {
-          return /^(https?|file|ftp|chrome-extension):\/\/.*/;
-        }
-        const matchPatternRegExp =
-          /^(?<scheme>\*|https?|file|ftp|chrome-extension):\/\/(?<host>\*|\*\.[^*/]+|[^*/]+)(?<path>\/.*)$/;
-        const match = matchPatternRegExp.exec(pattern);
-        if (!match || !match.groups) return null;
-
-        const { scheme, host, path } = match.groups;
-        const schemeRegex =
-          scheme === "*" ? "(http|https)" : escapeRegex(scheme);
-        const hostRegex =
-          host === "*"
-            ? "[^/]+"
-            : host.startsWith("*.")
-            ? `(?:[^/]+\\.)?${escapeRegex(host.slice(2))}`
-            : escapeRegex(host);
-        const pathRegex = escapeRegex(path).replace(/\\\*/g, ".*");
-
-        return new RegExp(`^${schemeRegex}://${hostRegex}${pathRegex}$`);
-      };
-
-      const doesUrlMatch = (currentUrl, storedUrl) => {
-        const trimmed = storedUrl.trim();
-        if (!trimmed) return false;
-        if (trimmed.includes("*")) {
-          const pattern = convertUrlToRegExp(trimmed);
-          return pattern
-            ? pattern.test(currentUrl)
-            : currentUrl.includes(trimmed.replace(/\*/g, ""));
-        }
-        return currentUrl.startsWith(trimmed);
-      };
-
-      const checkAssignmentsPage = () => {
-        if (
-          typeof chrome === "undefined" ||
-          !chrome.storage?.local ||
-          typeof chrome.storage.local.get !== "function"
-        ) {
-          return;
-        }
-
-        chrome.storage.local.get([ASSIGNMENTS_PAGE_URL_KEY], (result) => {
-          if (chrome?.runtime?.lastError) return;
-
-          const rawValue = result?.[ASSIGNMENTS_PAGE_URL_KEY];
-          const storedValue =
-            typeof rawValue === "string" && rawValue.trim().length > 0
-              ? rawValue.trim()
-              : "";
-          const assignmentsUrl =
-            storedValue.length > 0
-              ? storedValue
-              : typeof ASSIGNMENTS_PAGE_URL_KEY === "string"
-              ? ASSIGNMENTS_PAGE_URL_KEY
-              : "";
-
-          if (
-            assignmentsUrl &&
-            doesUrlMatch(window.location.href, assignmentsUrl)
-          ) {
-            console.log("Assignments Page");
-            findData();
-          }
-        });
-      };
 
       if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", checkAssignmentsPage);
+        document.addEventListener("DOMContentLoaded", doesUrlMatch);
       } else {
-        checkAssignmentsPage();
+        doesUrlMatch(ASSIGNMENTS_STORAGE_KEY), CHECKAGAINSTURLS, findData();
       }
     }
   )();
