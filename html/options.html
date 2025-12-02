@@ -1,134 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
     <title>Work Timer Options</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      body {
-        font-family: sans-serif;
-        margin: 24px;
-      }
-
-      main {
-        max-width: 480px;
-      }
-
-      label {
-        display: block;
-        margin-bottom: 8px;
-        font-weight: 600;
-      }
-
-      .assignments-form {
-        margin-bottom: 20px;
-      }
-
-      .assignments-form .input-row {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-      }
-
-      .assignments-form input[type="text"] {
-        flex: 1;
-        margin-bottom: 0;
-      }
-
-      .assignments-form button {
-        padding: 8px 16px;
-        font-size: 14px;
-      }
-
-      select {
-        width: 100%;
-        padding: 8px;
-        margin-bottom: 16px;
-        box-sizing: border-box;
-      }
-
-      #work-time-display {
-        margin-bottom: 16px;
-        font-weight: 600;
-      }
-
-      .danger-button {
-        background-color: #dc2626;
-        color: #ffffff;
-        border: none;
-        padding: 10px 16px;
-        font-size: 14px;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-
-      .danger-button:hover {
-        background-color: #b91c1c;
-      }
-
-      input[type="text"] {
-        width: 100%;
-        padding: 8px;
-        margin-bottom: 12px;
-        box-sizing: border-box;
-      }
-
-      button {
-        padding: 8px 16px;
-        font-size: 14px;
-      }
-
-      #saved-url {
-        margin-bottom: 16px;
-        font-size: 14px;
-      }
-
-      #status {
-        margin-top: 8px;
-        min-height: 1em;
-        font-size: 12px;
-        color: #0b57d0;
+      .form-group {
+        margin-bottom: 10px;
       }
     </style>
   </head>
   <body>
-    <main>
-      <h1>Work Timer Options</h1>
-      <form id="assignments-form" class="assignments-form">
-        <label for="assignments-input">Assignments Page URL</label>
-        <div class="input-row">
-          <input
-            id="assignments-input"
-            name="assignmentsUrl"
-            type="text"
-            placeholder="https://example.com/assignments"
-          />
-          <button type="submit">Save</button>
-        </div>
-      </form>
-      <label for="dataset-select">Saved Projects</label>
-      <select id="dataset-select">
-        <option value="">Select a project</option>
-      </select>
-      <div id="saved-url">No dataset selected.</div>
-      <div id="work-time-display">
-        Work Time: <span id="work-time-value">00:00:00</span>
+    <form id="projectForm">
+      <div class="form-group">
+        <label for="field1">Field 1:</label>
+        <input type="text" id="field1" name="field1">
       </div>
-      <form id="url-form">
-        <label for="url-input">Workspace URL</label>
-        <input
-          id="url-input"
-          name="url"
-          type="text"
-          placeholder="https://example.com/*"
-        />
-        <button type="submit">Save</button>
-      </form>
-      <button id="delete-button" type="button" class="danger-button">
-        Delete Project
-      </button>
-      <div id="status" role="status" aria-live="polite"></div>
-    </main>
-    <script src="../js/options.js"></script>
+      <div class="form-group">
+        <button type="button" id="addButton">Add Field</button>
+      </div>
+    </form>
+    <script src="optionsForm.js"></script>
   </body>
 </html>

@@ -9,7 +9,7 @@
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", doesUrlMatch);
       } else {
-        doesUrlMatch(ASSIGNMENTS_STORAGE_KEY), CHECKAGAINSTURLS, findData();
+        doesUrlMatch(ASSIGNMENTS_STORAGE_KEY), CHECKAGAINSTURLS, findData(); // 2nd param is a placeholder
       }
     }
   )();
