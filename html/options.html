@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <title>Work Timer Options</title>
+    <title>Work Log Options</title>
     <style>
       .form-group {
         margin-bottom: 10px;
@@ -9,15 +9,24 @@
     </style>
   </head>
   <body>
+    <h1>Configure Work Log</h1>
+    <h2>Project</h2>
     <form id="projectForm">
-      <div class="form-group">
-        <label for="field1">Field 1:</label>
-        <input type="text" id="field1" name="field1">
+      <div id="defaultFields">
+        <div class="form-group">
+          <label for="title-input">Title</label>
+          <input type="text" id="titleInput" name="titleInput"/>
+        </div>
       </div>
-      <div class="form-group">
-        <button type="button" id="addButton">Add Field</button>
+      <div id="customFields">
+        <h3>Add Custom Fields</h3>
+        <div class="form-group">
+          <input type="text" id="addField" name="addField">
+          <button type="button" id="addButton">Add Field</button>
+        </div>
       </div>
     </form>
-    <script src="optionsForm.js"></script>
+    <script type="module" src="optionsForm.js">
+    </script>
   </body>
 </html>
