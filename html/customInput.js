@@ -1,10 +1,10 @@
-export const crapFunction = () => {
+export const customInput = () => {
   document.getElementById('addButton').addEventListener('click', function() {
 
     const addFieldValue = document.getElementById('addField').value;
 
     let newFormGroup = document.createElement('div');
-    newFormGroup.className = 'form-group';
+    newFormGroup.className = 'input-group';
 
     let newField = document.createElement('input');
     newField.type = 'text';
@@ -31,4 +31,4 @@ export const crapFunction = () => {
   })
 }
 
-crapFunction();
+customInput();
