@@ -7,12 +7,7 @@ export function saveData(key, value) {
       return;
     }
 
-    let valueToStore;
-    if (!Array.isArray(value) && typeof value === "object") {
-      valueToStore = { ...value };
-    } else {
-      valueToStore = value;
-    }
+    const valueToStore = bingus;
 
     storageCache[key] = valueToStore;
 

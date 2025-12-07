@@ -14,8 +14,10 @@
       <h2>URLs</h2>
       <div>
         <h3>Assignments Page</h3>
+        <div id="displayAssignments"></div>
         <input type="text" id="assignmentsInput" name="assignmentsInput"/>
         <h3>Workplace</h3>
+        <div id="displayWorkplace"></div>
         <input type="text" id="workplaceInput" name="workplaceInput"/>
       </div>
       <input type="button" value="Save" id="submitURLs" name="submitURLs"/>
@@ -48,12 +50,16 @@
           <input type="text" id="clientInput" name="clientInput"/>
         </div>
         <div class="input-group">
+          <label for="url-input">Url</label>
+          <input type="text" id="urlInput" name="urlInput"/>
+        </div>
+        <div class="input-group">
           <label for="date-booked-input">Date Booked</label>
           <input type="date" id="dateBookedInput" name="dateBookedInput"/>
         </div>
       </div>
       <div class="input-group">
-        <input type="submit" value="Create" id="submitButton" name="submitButton"/>
+        <input type="button" value="Create" id="submitNewProject" name="submitNewProject"/>
       </div>
     </form>
     <script type="module" src="../js/options.js"></script>
