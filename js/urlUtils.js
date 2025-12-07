@@ -1,8 +1,8 @@
 "use strict";
 
-export const insertRegexEscapes = (value) => value.replace(/[.*^$+?()[\]{}|\\]/g, "\\$&");
 
 export const convertUrlToRegExp = (pattern) => {
+  const insertRegexEscapes = (value) => value.replace(/[.*^$+?()[\]{}|\\]/g, "\\$&");
 
   const urlParser = /^(?<scheme>\*|https?|file|ftp|chrome-extension):\/\/(?<host>\*|\*\.[^*/]+|[^*/]+)(?<path>\/.*)$/;
 
@@ -103,9 +103,8 @@ export const getStoredValues = (storageKey, propertyKeyString) =>
     );
   });
 
-  /* Does url match should probably just return true or false and I can put the
-  callbacks in an if statement */
-export const doesUrlMatch = (inputUrl, checkAgainstUrls, callbacks) => {
+
+export const doesUrlMatch = (inputUrl, checkAgainstUrls) => {
   const doesUrlMatchPattern = (url, pattern) => {
     const regex = convertUrlToRegExp(pattern);
     if (regex) return regex.test(url);
@@ -117,17 +116,10 @@ export const doesUrlMatch = (inputUrl, checkAgainstUrls, callbacks) => {
     : [checkAgainstUrls];
 
   if (urlsToCheck.some((url) => doesUrlMatchPattern(inputUrl, url))) {
-    if (!callbacks) {
-      console.log("inputUrl matches stored url(s).");
-    } else if (typeof callbacks === "function") {
-      callbacks();
-    } else if (Array.isArray(callbacks)) {
-      callbacks.forEach((fn) => {
-        if (typeof fn === "function") fn();
-      });
-    }
+    return true;
   } else {
     console.log(`inputUrl does not match ${checkAgainstUrls}`);
+    return false;
   }
 };
 
