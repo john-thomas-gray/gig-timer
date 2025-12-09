@@ -5,7 +5,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const workplaceDisplay = document.getElementById("displayWorkplace");
   const submitUrls = document.getElementById("submitURLs");
 
-  const { urls } = await chrome.storage.sync.get("urls");
+  const { urls = {} } = await chrome.storage.sync.get("urls");
 
   if (urls?.assignments) {
     assignmentsInput.value = urls.assignments;
@@ -72,7 +72,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 
     const data = {title, runtime, rate, contractor, client, workplaceUrl, dateBooked, invoiceAmount, workTime, hourlyRate}
-    projects.push(data);
+
+    if (existingProject) {
+      Object.assign(existingProject, data);
+    } else {
+      projects.push(data);
+    }
 
     try {
       await chrome.storage.sync.set({projects: projects})
