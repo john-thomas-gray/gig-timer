@@ -8,7 +8,7 @@
     "default_popup": "html/popup.html",
     "default_title": "Work Timer"
   },
-  "host_permissions": ["https://*.google.com/*", "https://*.frogger.com/*"],
+  "host_permissions": ["*://*/*"],
   "permissions": ["storage", "tabs", "activeTab", "webNavigation"],
   "background": {
     "service_worker": "./service-worker.js",
@@ -16,17 +16,15 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://localization.pixelogicmedia.com/*"],
-      "js": ["js/timer.js", "js/assignments.js"]
+      "matches": ["*://*/*"],
+      "js": ["js/timer.js"]
     }
   ],
   "web_accessible_resources": [
     {
-      "matches": ["https://localization.pixelogicmedia.com/*"],
+      "matches": ["*://*/*"],
       "resources": [
-        "js/assignmentsBridge.js",
-        "js/urlUtils.js",
-        "js/assignments.js"
+        "js/urlUtils.js"
       ]
     }
   ]
