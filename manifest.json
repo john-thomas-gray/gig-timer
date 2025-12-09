@@ -1,6 +1,6 @@
 {
   "name": "Work Timer",
-  "description": "Work Timer tracks the amount of time it takes to complete tasks and data in relation to time",
+  "description": "Work Timer quantifies project time data.",
   "version": "1.0",
   "manifest_version": 3,
   "options_page": "html/options.html",
@@ -8,25 +8,26 @@
     "default_popup": "html/popup.html",
     "default_title": "Work Timer"
   },
-  "permissions": ["storage"],
+  "host_permissions": ["https://*.google.com/*", "https://*.frogger.com/*"],
+  "permissions": ["storage", "tabs", "activeTab", "webNavigation"],
   "background": {
-    "service_worker": "js/background.js",
+    "service_worker": "./service-worker.js",
     "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["https://localization.pixelogicmedia.com/*"],
-      "js": [
-        "js/timer.js",
-        "js/checkCurrentUrl.js",
-        "js/assignments.js"
-      ]
+      "js": ["js/timer.js", "js/assignments.js"]
     }
   ],
   "web_accessible_resources": [
     {
       "matches": ["https://localization.pixelogicmedia.com/*"],
-      "resources": ["js/assignmentsBridge.js", "js/urlUtils.js", "js/assignments.js"]
+      "resources": [
+        "js/assignmentsBridge.js",
+        "js/urlUtils.js",
+        "js/assignments.js"
+      ]
     }
   ]
 }
