@@ -43,6 +43,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   const clientInput = document.getElementById("clientInput");
   const workplaceUrlInput = document.getElementById("workplaceUrlInput");
   const dateBookedInput = document.getElementById("dateBookedInput");
+  if (!dateBookedInput.value) {
+    const today = new Date();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    dateBookedInput.value = `${mm}-${dd}`;
+  }
 
   submitNewProject.addEventListener("click", async () => {
     const { projects = [] } = await chrome.storage.sync.get("projects");
@@ -64,7 +70,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       runtime != null && rate != null
         ? runtime * rate
         : existingProject?.invoiceAmount ?? null;
-    const workTime = existingProject?.workTime ?? null;
+    const workTime = existingProject?.workTime ?? 0;
     const hourlyRate =
       invoiceAmount != null && workTime != null
         ? +((invoiceAmount / Math.round(+workTime)) * 60).toFixed(2)

@@ -25,7 +25,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 chrome.webNavigation.onCompleted.addListener(
   (details) => {
-    const { frameId, url } = details;
+    const { frameId, tabId, url } = details;
     if (frameId !== 0) return;
 
     const { assignments, workplace } = storageCache.urls;
@@ -37,8 +37,10 @@ chrome.webNavigation.onCompleted.addListener(
       console.log("Get assignment details");
     } else if (url.includes(workplace)) {
       console.log("Start timer");
+      chrome.tabs.sendMessage(tabId, {action: "initStopwatch"});
     }
-  },
+  }
   // how can I make this dynamic
-  { url: [{ hostContains: "localization.pixelogicmedia.com" }] }
+  // ,
+  // { url: [{ hostContains: "localization.pixelogicmedia.com" }] }
 );

@@ -5,24 +5,7 @@ let logIntervalId = null;
 let accumulatedDurationBeforeSessionMs = 0;
 let activeProjectTitle = null;
 const TIMER_PROJECT_DURATIONS_KEY = "projectDurations";
-const normalizeProjectTitle = (value) => {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-};
-const normalizeTimerDurationMap = (raw) => {
-  if (!raw || typeof raw !== "object") {
-    return {};
-  }
-  return Object.entries(raw).reduce((acc, [key, value]) => {
-    if (typeof key === "string" && typeof value === "number") {
-      acc[key.trim()] = Number.isFinite(value) ? Math.max(0, value) : 0;
-    }
-    return acc;
-  }, {});
-};
+
 const getStoredDuration = () =>
   new Promise((resolve) => {
     if (

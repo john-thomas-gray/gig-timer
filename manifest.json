@@ -17,7 +17,7 @@
   "content_scripts": [
     {
       "matches": ["*://*/*"],
-      "js": ["js/timer.js"]
+      "js": ["js/timer.js", "js/stopwatch.js"]
     }
   ],
   "web_accessible_resources": [

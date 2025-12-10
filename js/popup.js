@@ -1,1 +1,1 @@
-chrome.runtime.sendMessage({ type: "initStorageCache" });
+// chrome.runtime.sendMessage({ type: "initStorageCache" });
