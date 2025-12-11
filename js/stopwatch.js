@@ -35,10 +35,10 @@ function updateDisplay(time) {
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.action === "updateDisplay") {
+  if (msg.action === "update-display") {
     updateDisplay(msg.elapsedTime);
   }
-  if (msg.action === "createStopwatchElement") {
+  if (msg.action === "create-stopwatch-element") {
     createStopwatchElement();
   }
 });
@@ -56,7 +56,7 @@ function resetTimeSinceLastAction() {
   lastSent = now;
 
   chrome.runtime.sendMessage({
-    action: "resetTimeSinceLastAction",
+    action: "reset-time-since-last-action",
     url: window.location.href,
   });
 }

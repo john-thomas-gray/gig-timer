@@ -17,13 +17,13 @@
   "content_scripts": [
     {
       "matches": ["*://*/*"],
-      "js": ["js/stopwatch.js"]
+      "js": ["js/stopwatch.js", "js/assignments.js"]
     }
   ],
   "web_accessible_resources": [
     {
       "matches": ["*://*/*"],
-      "resources": ["js/urlUtils.js"]
+      "resources": ["js/assignments-bridge.js"]
     }
   ]
 }

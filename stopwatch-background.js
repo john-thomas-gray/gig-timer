@@ -1,29 +1,3 @@
-const storageCache = { count: 0, urls: {}, projects: [] };
-let currentTabId = null;
-let currentUrl = null;
-
-async function initStorageCache() {
-  const items = await chrome.storage.sync.get([
-    "count",
-    "lastTabId",
-    "urls",
-    "projects",
-  ]);
-  Object.assign(storageCache, items);
-}
-initStorageCache();
-
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "sync") {
-    for (const key in changes) {
-      if (storageCache.hasOwnProperty(key)) {
-        storageCache[key] = changes[key].newValue;
-        console.log(`Updated storageCache.${key}:`, storageCache[key]);
-      }
-    }
-  }
-});
-
 chrome.webNavigation.onCompleted.addListener(async (details) => {
   const { frameId, tabId, url } = details;
   if (frameId !== 0) return;
@@ -37,8 +11,7 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
   currentTabId = tabId;
 
   if (url.includes(assignmentsUrl)) {
-    chrome.tabs.sendMessage(currentTabId, { action: "REQUEST_W2UI_DATA" });
-    console.log("on assignments page");
+    console.log("assignments");
   } else if (url.includes(workplaceUrl)) {
     await initStopwatch();
     startStopwatch();
@@ -71,6 +44,7 @@ async function initStopwatch(tabId = null, url = null) {
   updateDisplay();
 }
 
+// connect method?
 function updateDisplay() {
   if (!currentTabId) return;
   checkIdle();
@@ -119,11 +93,6 @@ async function setElapsedTime(seconds) {
   });
 }
 
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.action === "start-stopwatch") startStopwatch();
-  if (msg.action === "reset-time-since-last-action") resetTimeSinceLastAction();
-});
-
 let timeSinceLastAction = 0;
 let isIdle = false;
 
@@ -160,49 +129,4 @@ function checkIdle() {
   if (!isIdle && timeSinceLastAction > idleThreshold) {
     setIdle();
   }
-}
-
-// Assignments
-
-chrome.webNavigation.onCompleted.addListener(async (details) => {
-  const { frameId, tabId, url } = details;
-  if (frameId !== 0) return;
-
-  const { assignments: assignmentsUrl } = storageCache.urls;
-
-  if (!assignmentsUrl) return;
-
-  currentUrl = url;
-  currentTabId = tabId;
-
-  if (url.includes(assignmentsUrl)) {
-    chrome.tabs.sendMessage(currentTabId, {
-      action: "REQUEST_ASSIGNMENTS_DATA",
-    });
-    console.log("on assignments page");
-  }
-});
-
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === "RETURN_W2UI_DATA") {
-    handleAssignmentSnapshot(msg.payload.snapshot);
-  }
-
-  if (msg.type === "W2UI_DATA_ERROR") {
-    console.warn("Failed to get assignment data:", msg.payload);
-  }
-});
-
-async function handleAssignmentSnapshot(snapshot) {
-  const { records } = snapshot;
-  if (!Array.isArray(records)) return;
-
-  const projects = storageCache.projects || [];
-
-  console.log("Processing assignment data");
-  console.log(records);
-
-  // chrome.storage.sync.set({ projects: newProjects }, () => {
-  //   console.log("Projects saved from assignments snapshot:", newProjects);
-  // });
 }
