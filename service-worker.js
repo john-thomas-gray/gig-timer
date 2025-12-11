@@ -1,46 +1,112 @@
-const storageCache = { count: 0, urls: {} };
+const storageCache = { count: 0, urls: {}, projects: [] };
+let currentTabId = null;
+let currentUrl = null;
 
-// Doesn't go fast enough
 async function initStorageCache() {
-  const items = await chrome.storage.sync.get(["count", "lastTabId", "urls"]);
+  const items = await chrome.storage.sync.get([
+    "count",
+    "lastTabId",
+    "urls",
+    "projects",
+  ]);
   Object.assign(storageCache, items);
 }
 initStorageCache();
 
-//never runs because popup blocks action
-chrome.action.onClicked.addListener(async (tab) => {
-  storageCache.count++;
-  storageCache.lastTabId = tab.id;
-  chrome.storage.sync.set({
-    count: storageCache.count,
-    lastTabId: storageCache.lastTabId,
-  });
-});
-
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "sync" && changes.urls?.newValue) {
-    storageCache.urls = changes.urls.newValue;
-  }
-});
-
-chrome.webNavigation.onCompleted.addListener(
-  (details) => {
-    const { frameId, tabId, url } = details;
-    if (frameId !== 0) return;
-
-    const { assignments, workplace } = storageCache.urls;
-
-    if (!assignments && !workplace) return;
-
-    // something more robust. normalization
-    if (url.includes(assignments)) {
-      console.log("Get assignment details");
-    } else if (url.includes(workplace)) {
-      console.log("Start timer");
-      chrome.tabs.sendMessage(tabId, {action: "initStopwatch"});
+  if (area === "sync") {
+    for (const key in changes) {
+      if (storageCache.hasOwnProperty(key)) {
+        storageCache[key] = changes[key].newValue;
+        console.log(`Updated storageCache.${key}:`, storageCache[key]);
+      }
     }
   }
-  // how can I make this dynamic
-  // ,
-  // { url: [{ hostContains: "localization.pixelogicmedia.com" }] }
-);
+});
+
+chrome.webNavigation.onCompleted.addListener(async (details) => {
+  const { frameId, tabId, url } = details;
+  if (frameId !== 0) return;
+
+  const { assignments: assignmentsUrl, workplace: workplaceUrl } =
+    storageCache.urls;
+
+  if (!assignmentsUrl && !workplaceUrl) return;
+
+  currentUrl = url;
+  currentTabId = tabId;
+
+  // something more robust. normalization
+  if (url.includes(assignmentsUrl)) {
+    console.log("assignments");
+  } else if (url.includes(workplaceUrl)) {
+    await initStopwatch();
+    startStopwatch();
+  }
+});
+
+chrome.tabs.onRemoved.addListener(() => {
+  pauseStopwatch();
+});
+
+let stopwatchInterval = null;
+let elapsedTime = 0;
+
+async function getCurrentProject() {
+  const projects = storageCache.projects;
+  const currentProject = projects.find((p) => p.workplaceUrl === currentUrl);
+  return currentProject;
+}
+
+async function initStopwatch(tabId = null, url = null) {
+  if (tabId) currentTabId = tabId;
+  if (url) currentUrl = url;
+  const currentProject = await getCurrentProject(currentUrl);
+  if (!currentProject) {
+    console.warn("Current project not found");
+    elapsedTime = 0;
+    return;
+  }
+  elapsedTime = currentProject.workTime || 0;
+  updateDisplay();
+}
+
+function updateDisplay() {
+  if (!currentTabId) return;
+
+  chrome.tabs.sendMessage(currentTabId, {
+    action: "updateDisplay",
+    elapsedTime,
+  });
+}
+
+function startStopwatch() {
+  clearInterval(stopwatchInterval);
+  chrome.tabs.sendMessage(currentTabId, { action: "createStopwatchElement" });
+  stopwatchInterval = setInterval(() => {
+    elapsedTime++;
+    updateDisplay();
+  }, 1000);
+}
+
+async function pauseStopwatch() {
+  const projects = storageCache.projects;
+  const currentProject = await getCurrentProject();
+  if (!currentProject) return;
+
+  clearInterval(stopwatchInterval);
+  stopwatchInterval = null;
+
+  currentProject.workTime = elapsedTime;
+
+  chrome.storage.sync.set({ projects }, () => {
+    console.log("Work time saved:", elapsedTime);
+  });
+
+  updateDisplay();
+}
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.action === "startStopwatch") startStopwatch();
+  if (msg.action === "pauseStopwatch") pauseStopwatch();
+});

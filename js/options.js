@@ -45,12 +45,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const dateBookedInput = document.getElementById("dateBookedInput");
   if (!dateBookedInput.value) {
     const today = new Date();
+    const year = String(today.getFullYear);
     const mm = String(today.getMonth() + 1).padStart(2, "0");
     const dd = String(today.getDate()).padStart(2, "0");
-    dateBookedInput.value = `${mm}-${dd}`;
+    dateBookedInput.value = `${year}-${mm}-${dd}`;
   }
 
   submitNewProject.addEventListener("click", async () => {
+    console.log("submit")
     const { projects = [] } = await chrome.storage.sync.get("projects");
     const workplaceUrl =
       workplaceUrlInput?.value ?? null;
