@@ -3,7 +3,6 @@ let currentTabId = null;
 let currentUrl = null;
 
 async function initStorageCache() {
-  setElapsedTime(10);
   const items = await chrome.storage.sync.get([
     "count",
     "lastTabId",
@@ -138,11 +137,20 @@ function resetTimeSinceLastAction() {
 
 function setIdle() {
   if (!isIdle) {
-    pauseStopwatch();
-    const timeAdjustedForIdle = elapsedTime - timeSinceLastAction;
-    setElapsedTime(timeAdjustedForIdle);
-    updateDisplay();
     isIdle = true;
+    pauseStopwatch();
+
+    const adjustedElapsed = Math.max(elapsedTime - timeSinceLastAction, 0);
+    elapsedTime = adjustedElapsed;
+
+    if (currentTabId) {
+      chrome.tabs.sendMessage(currentTabId, {
+        action: "updateDisplay",
+        elapsedTime: elapsedTime,
+      });
+    }
+
+    setElapsedTime(adjustedElapsed);
   }
 }
 
