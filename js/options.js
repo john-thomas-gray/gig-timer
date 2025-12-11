@@ -35,7 +35,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  const submitNewProject = document.getElementById('submitNewProject');
+  const submitNewProject = document.getElementById("submitNewProject");
   const titleInput = document.getElementById("titleInput");
   const runtimeInput = document.getElementById("runtimeInput");
   const rateInput = document.getElementById("rateInput");
@@ -45,17 +45,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   const dateBookedInput = document.getElementById("dateBookedInput");
   if (!dateBookedInput.value) {
     const today = new Date();
-    const year = String(today.getFullYear);
+    const yyyy = String(today.getFullYear);
     const mm = String(today.getMonth() + 1).padStart(2, "0");
     const dd = String(today.getDate()).padStart(2, "0");
-    dateBookedInput.value = `${year}-${mm}-${dd}`;
+    dateBookedInput.value = `${yyyy}-${mm}-${dd}`;
   }
 
   submitNewProject.addEventListener("click", async () => {
-    console.log("submit")
+    console.log("submit");
     const { projects = [] } = await chrome.storage.sync.get("projects");
-    const workplaceUrl =
-      workplaceUrlInput?.value ?? null;
+    const workplaceUrl = workplaceUrlInput?.value ?? null;
     const existingProject = projects.find(
       (p) => p.workplaceUrl === workplaceUrl
     );
@@ -64,10 +63,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const runtime = runtimeInput?.value
       ? Math.round(+runtimeInput.value)
       : existingProject?.runtime ?? null;
-    const rate = rateInput?.value ? +rateInput.value : existingProject?.rate ?? null;
-    const contractor = contractorInput?.value ?? existingProject?.contractor ?? null;
+    const rate = rateInput?.value
+      ? +rateInput.value
+      : existingProject?.rate ?? null;
+    const contractor =
+      contractorInput?.value ?? existingProject?.contractor ?? null;
     const client = clientInput?.value ?? existingProject?.client ?? null;
-    const dateBooked = dateBookedInput?.value ?? existingProject?.dateBooked ?? null;
+    const dateBooked =
+      dateBookedInput?.value ?? existingProject?.dateBooked ?? null;
     const invoiceAmount =
       runtime != null && rate != null
         ? runtime * rate
@@ -78,8 +81,18 @@ document.addEventListener("DOMContentLoaded", async () => {
         ? +((invoiceAmount / Math.round(+workTime)) * 60).toFixed(2)
         : null;
 
-
-    const data = {title, runtime, rate, contractor, client, workplaceUrl, dateBooked, invoiceAmount, workTime, hourlyRate}
+    const data = {
+      title,
+      runtime,
+      rate,
+      contractor,
+      client,
+      workplaceUrl,
+      dateBooked,
+      invoiceAmount,
+      workTime,
+      hourlyRate,
+    };
 
     if (existingProject) {
       Object.assign(existingProject, data);
@@ -88,11 +101,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     try {
-      await chrome.storage.sync.set({projects: projects})
+      await chrome.storage.sync.set({ projects: projects });
     } catch (error) {
       console.error("Error saving project:", error);
     }
-
-
   });
 });

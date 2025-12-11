@@ -18,9 +18,20 @@ function createStopwatchElement() {
   return stopwatchElement;
 }
 
+function formatTime(seconds) {
+  const hrs = Math.floor(seconds / 3600)
+    .toString()
+    .padStart(2, "0");
+  const mins = Math.floor((seconds % 3600) / 60)
+    .toString()
+    .padStart(2, "0");
+  const secs = (seconds % 60).toString().padStart(2, "0");
+  return `${hrs}:${mins}:${secs}`;
+}
+
 function updateDisplay(time) {
   const el = createStopwatchElement();
-  el.textContent = `Time elapsed: ${time}`;
+  el.textContent = `Time elapsed: ${formatTime(time)}`;
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
@@ -31,3 +42,21 @@ chrome.runtime.onMessage.addListener((msg) => {
     createStopwatchElement();
   }
 });
+
+document.addEventListener("pointermove", resetTimeSinceLastAction);
+document.addEventListener("keypress", resetTimeSinceLastAction);
+
+let lastSent = 0;
+const THROTTLE_MS = 1000;
+
+function resetTimeSinceLastAction() {
+  const now = Date.now();
+  if (now - lastSent < THROTTLE_MS) return;
+
+  lastSent = now;
+
+  chrome.runtime.sendMessage({
+    action: "resetTimeSinceLastAction",
+    url: window.location.href,
+  });
+}

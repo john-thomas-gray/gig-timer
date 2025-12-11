@@ -17,15 +17,13 @@
   "content_scripts": [
     {
       "matches": ["*://*/*"],
-      "js": ["js/timer.js", "js/stopwatch.js"]
+      "js": ["js/stopwatch.js"]
     }
   ],
   "web_accessible_resources": [
     {
       "matches": ["*://*/*"],
-      "resources": [
-        "js/urlUtils.js"
-      ]
+      "resources": ["js/urlUtils.js"]
     }
   ]
 }

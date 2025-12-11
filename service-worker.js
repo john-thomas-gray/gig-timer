@@ -3,6 +3,7 @@ let currentTabId = null;
 let currentUrl = null;
 
 async function initStorageCache() {
+  setElapsedTime(10);
   const items = await chrome.storage.sync.get([
     "count",
     "lastTabId",
@@ -73,7 +74,7 @@ async function initStopwatch(tabId = null, url = null) {
 
 function updateDisplay() {
   if (!currentTabId) return;
-
+  checkIdle();
   chrome.tabs.sendMessage(currentTabId, {
     action: "updateDisplay",
     elapsedTime,
@@ -106,7 +107,49 @@ async function pauseStopwatch() {
   updateDisplay();
 }
 
+async function setElapsedTime(seconds) {
+  const projects = storageCache.projects;
+  const currentProject = await getCurrentProject();
+  if (!currentProject) return;
+  elapsedTime = seconds;
+
+  currentProject.workTime = elapsedTime;
+
+  chrome.storage.sync.set({ projects }, () => {
+    console.log("Work time saved:", elapsedTime);
+  });
+}
+
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.action === "startStopwatch") startStopwatch();
-  if (msg.action === "pauseStopwatch") pauseStopwatch();
+  if (msg.action === "resetTimeSinceLastAction") resetTimeSinceLastAction();
 });
+
+let timeSinceLastAction = 0;
+let isIdle = false;
+
+function resetTimeSinceLastAction() {
+  timeSinceLastAction = 0;
+  if (isIdle) {
+    isIdle = false;
+    startStopwatch();
+  }
+}
+
+function setIdle() {
+  if (!isIdle) {
+    pauseStopwatch();
+    const timeAdjustedForIdle = elapsedTime - timeSinceLastAction;
+    setElapsedTime(timeAdjustedForIdle);
+    updateDisplay();
+    isIdle = true;
+  }
+}
+
+function checkIdle() {
+  timeSinceLastAction++;
+  const idleThreshold = 5;
+  if (!isIdle && timeSinceLastAction > idleThreshold) {
+    setIdle();
+  }
+}
