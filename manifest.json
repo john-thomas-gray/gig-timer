@@ -17,12 +17,11 @@
   "content_scripts": [
     {
       "matches": ["*://*/*"],
-      "js": [
-        "js/stopwatch.js",
-        "js/assignments.js",
-        "js/workplace.js",
-        "js/inject-bridge.js"
-      ]
+      "js": ["js/stopwatch.js", "js/assignments.js", "js/workplace.js"]
+    },
+    {
+      "matches": ["*://*/localization.pixelogicmedia.com*"],
+      "js": ["js/inject-bridge.js"]
     }
   ],
   "web_accessible_resources": [

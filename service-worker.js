@@ -61,10 +61,8 @@ async function getWorkplaceId() {
       action: "request-workplace-id",
       source: "service-worker.js",
     });
-    console.log(response, "kokomo");
-    const id = response.data;
 
-    console.log(id);
+    const id = response.data;
 
     return id;
   } catch (error) {
@@ -86,7 +84,7 @@ async function setUpWorkplacePage() {
 }
 
 function setProjectUrl(id) {
-  const p = getCurrentProject(id);
+  const p = getProjectById(id);
 
   if (p.workplace_url) return;
   p.workplace_url = currentUrl;
@@ -104,7 +102,7 @@ function setProjectUrl(id) {
   });
 }
 
-function getCurrentProject(workplaceId) {
+function getProjectById(workplaceId) {
   const projects = storageCache.projects;
   /* Bandaid making Id checking less strict
   project.id = "Betrayal: Secrets and Lies: Season 1: Episode 1: Episode 1 (E0001)"
@@ -120,7 +118,7 @@ function getCurrentProject(workplaceId) {
 
 function initStopwatch(tabId = null, url = null) {
   if (tabId) currentTabId = tabId;
-  const currentProject = getCurrentProject(workplaceId);
+  const currentProject = getProjectById(workplaceId);
   if (!currentProject) {
     console.warn("Current project not found");
     elapsedTime = 0;
@@ -151,7 +149,7 @@ function startStopwatch() {
 function pauseStopwatch() {
   const projects = storageCache.projects;
 
-  const currentProject = projects.find((project) => project.id === workplaceId);
+  const currentProject = getProjectById(workplaceId);
 
   clearInterval(stopwatchInterval);
   stopwatchInterval = null;
@@ -168,7 +166,7 @@ function pauseStopwatch() {
 
 function setElapsedTime(seconds) {
   const projects = storageCache.projects;
-  const currentProject = getCurrentProject(workplaceId);
+  const currentProject = getProjectById(workplaceId);
   if (!currentProject) return;
   elapsedTime = seconds;
 
@@ -180,7 +178,6 @@ function setElapsedTime(seconds) {
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.action === "start-stopwatch") startStopwatch();
   if (msg.action === "reset-time-since-last-action") resetTimeSinceLastAction();
 });
 
@@ -225,12 +222,12 @@ function checkIdle() {
 // Assignments
 
 async function setUpAssignmentsPage() {
-  console.log("on assignment page");
   let response;
   try {
     response = await chrome.tabs.sendMessage(currentTabId, {
-      action: "REQUEST_ASSIGNMENTS_DATA",
+      action: "request-assignments-data",
     });
+    console.log(response);
   } catch (e) {
     console.warn("Failed to send message:", e);
     return;
@@ -276,7 +273,6 @@ async function handleAssignmentSnapshot(snapshot) {
     Object.keys(projectTemplate).forEach((key) => {
       if (key in p) {
         merged[key] = p[key];
-        console.log("key:", key, "new value:", p[key]);
       } else if (key in existing) merged[key] = existing[key];
       else merged[key] = projectTemplate[key];
     });

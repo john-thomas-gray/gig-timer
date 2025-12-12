@@ -60,17 +60,15 @@
 
   window.addEventListener("message", (event) => {
     if (
-      event.source !== window ||
-      !event.data ||
       event.data.source !== "assignments.js" ||
       event.data.type !== "REQUEST_W2UI_DATA"
     ) {
+      console.warn("wrong input to bridge");
       return;
     }
 
     const attemptSendSnapshot = (attempt = 0) => {
       const grid = window.w2ui?.translation_jobs_grid;
-
       if (
         !grid ||
         !Array.isArray(grid.columns) ||
@@ -91,7 +89,7 @@
           return;
         }
 
-        setTimeout(() => attemptSendSnapshot(attempt + 1), ATTEMPT_DELAY_MS);
+        setTimeout(() => attemptSendSnapshot(attempt + 30), ATTEMPT_DELAY_MS);
         return;
       }
 

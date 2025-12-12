@@ -1,3 +1,7 @@
+const script = document.createElement("script");
+script.src = chrome.runtime.getURL("js/bridge.js");
+document.documentElement.appendChild(script);
+
 let pendingSendResponse = null;
 
 window.addEventListener("message", (event) => {
@@ -22,10 +26,8 @@ window.addEventListener("message", (event) => {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action !== "REQUEST_ASSIGNMENTS_DATA") return;
-
+  if (msg.action !== "request-assignments-data") return;
   pendingSendResponse = sendResponse;
-
   window.postMessage(
     { source: "assignments.js", type: "REQUEST_W2UI_DATA" },
     "*"

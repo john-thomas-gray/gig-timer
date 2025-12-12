@@ -4,10 +4,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     msg.action === "request-workplace-id"
   ) {
     const idSpan = document.getElementById("header-full-title");
-    if (!idSpan) {
-      sendResponse({ error: "No workplaceId found in DOM." });
-      return;
-    }
     const id = idSpan.textContent.trim();
     console.log("span:", id);
     sendResponse({ data: id });
