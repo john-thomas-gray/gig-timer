@@ -17,7 +17,7 @@
   "content_scripts": [
     {
       "matches": ["*://*/*"],
-      "js": ["js/stopwatch.js", "js/assignments.js"]
+      "js": ["js/stopwatch.js", "js/assignments.js", "js/workplace.js"]
     }
   ],
   "web_accessible_resources": [

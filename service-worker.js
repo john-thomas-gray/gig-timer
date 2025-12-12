@@ -4,6 +4,7 @@ import { formatProjectId } from "./utils.js";
 const storageCache = { count: 0, urls: {}, projects: [] };
 let currentTabId = null;
 let currentUrl = null;
+let projectId = null;
 
 async function initStorageCache() {
   const items = await chrome.storage.sync.get([
@@ -36,8 +37,8 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 
   if (!assignmentsUrl && !workplaceUrl) return;
 
-  currentUrl = url;
   currentTabId = tabId;
+  currentUrl = url;
 
   if (url.includes(assignmentsUrl)) {
     chrome.tabs.sendMessage(currentTabId, {
@@ -45,6 +46,10 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
     });
     console.log("on assignments page");
   } else if (url.includes(workplaceUrl)) {
+    // } else {
+    console.log("on workplace page");
+    await getProjectId();
+    await setProjectUrl();
     await initStopwatch();
     startStopwatch();
   }
@@ -57,16 +62,46 @@ chrome.tabs.onRemoved.addListener(() => {
 let stopwatchInterval = null;
 let elapsedTime = 0;
 
-async function getCurrentProject() {
+async function getProjectId() {
+  console.log("get project id");
+  const response = await chrome.runtime.sendMessage({
+    action: "request-workplace_id",
+  });
+  const { id } = response;
+
+  projectId = id;
+  console.log("projectid", projectId);
+  return id;
+}
+
+async function setProjectUrl(id) {
+  const p = getCurrentProject(id);
+
+  p.workplace_url = url;
+
+  const updatedProjects = storageCache.projects.map((project) => {
+    if (project.id === id) {
+      return { ...project, workplace_url: url };
+    }
+    return project;
+  });
+  console.log("updated projects", updatedProjects);
+
+  chrome.storage.sync.set({ projects: updatedProjects }, () => {
+    console.log(`Updated workplace_url for project ${currentProject.id}:`, url);
+    storageCache.projects = updatedProjects;
+  });
+}
+
+async function getCurrentProject(projectId) {
   const projects = storageCache.projects;
-  const currentProject = projects.find((p) => p.workplaceUrl === currentUrl);
+  const currentProject = projects.find((p) => p.id === projectId);
   return currentProject;
 }
 
 async function initStopwatch(tabId = null, url = null) {
   if (tabId) currentTabId = tabId;
-  if (url) currentUrl = url;
-  const currentProject = await getCurrentProject(currentUrl);
+  const currentProject = await getCurrentProject();
   if (!currentProject) {
     console.warn("Current project not found");
     elapsedTime = 0;
@@ -132,7 +167,6 @@ chrome.runtime.onMessage.addListener((msg) => {
     handleAssignmentSnapshot(msg.payload.snapshot);
     console.log("SW received return w2ui");
   }
-
   if (msg.type === "W2UI_DATA_ERROR") {
     console.warn("Failed to get assignment data:", msg.payload);
   }
@@ -189,7 +223,7 @@ async function handleAssignmentSnapshot(snapshot) {
 
   const projectMap = new Map();
   existingProjects.forEach((p) => {
-    const id = p.id || crypto.randomUUID();
+    const id = p.id;
     projectMap.set(id, p);
   });
 
@@ -198,9 +232,11 @@ async function handleAssignmentSnapshot(snapshot) {
     const merged = {};
 
     Object.keys(projectTemplate).forEach((key) => {
-      if (key in p) merged[key] = p[key];
-      else if (key in existing) merged[key] = existing[key];
-      else merged[key] = null;
+      if (key in p) {
+        merged[key] = p[key];
+        console.log("key:", key, "new value:", p[key]);
+      } else if (key in existing) merged[key] = existing[key];
+      else merged[key] = projectTemplate[key];
     });
 
     merged.id = p.id;
@@ -242,6 +278,7 @@ function getRelevantData(object) {
         const values = formatTitleAndEpisode(value);
         value = values.title;
         newProjectData["episode"] = values.episode;
+        newProjectData["id"] = object["title"];
       }
 
       newProjectData[formattedKey] = value;
@@ -251,17 +288,9 @@ function getRelevantData(object) {
   newProjectData["runtime"] = Math.round(
     object.alpha_source_materials?.[0]?.program_runtime || 0
   );
-  newProjectData["id"] = formatProjectId(
-    newProjectData.title,
-    newProjectData.episode
-  );
 
   return newProjectData;
 }
-// const formatProjectId = (title, episode) => {
-//   const id = title + "_" + episode;
-//   return id;
-// };
 
 function formatTitleAndEpisode(title) {
   const parts = title.split(":").map((part) => part.trim());

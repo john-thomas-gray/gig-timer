@@ -35,6 +35,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  const projectTemplate = {
+    id: undefined,
+    client: undefined,
+    contractor: "Pixelogic Media",
+    dateAssigned: undefined,
+    dateDue: undefined,
+    episode: undefined,
+    hourlyRate: undefined,
+    invoice_amount: undefined,
+    rate: 6,
+    runtime: undefined,
+    title: undefined,
+    work_time: 0,
+  };
+
   const submitNewProject = document.getElementById("submitNewProject");
   const titleInput = document.getElementById("titleInput");
   const runtimeInput = document.getElementById("runtimeInput");
@@ -42,13 +57,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const contractorInput = document.getElementById("contractorInput");
   const clientInput = document.getElementById("clientInput");
   const workplaceUrlInput = document.getElementById("workplaceUrlInput");
-  const dateBookedInput = document.getElementById("dateBookedInput");
-  if (!dateBookedInput.value) {
+  const dateAssignedInput = document.getElementById("dateAssignedInput");
+  if (!dateAssignedInput.value) {
     const today = new Date();
     const yyyy = String(today.getFullYear);
     const mm = String(today.getMonth() + 1).padStart(2, "0");
     const dd = String(today.getDate()).padStart(2, "0");
-    dateBookedInput.value = `${yyyy}-${mm}-${dd}`;
+    dateAssignedInput.value = `${yyyy}-${mm}-${dd}`;
   }
 
   submitNewProject.addEventListener("click", async () => {
@@ -69,16 +84,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     const contractor =
       contractorInput?.value ?? existingProject?.contractor ?? null;
     const client = clientInput?.value ?? existingProject?.client ?? null;
-    const dateBooked =
-      dateBookedInput?.value ?? existingProject?.dateBooked ?? null;
-    const invoiceAmount =
+    const date_assigned =
+      dateAssignedInput?.value ?? existingProject?.dateAssigned ?? null;
+    const invoice_amount =
       runtime != null && rate != null
         ? runtime * rate
-        : existingProject?.invoiceAmount ?? null;
-    const workTime = existingProject?.workTime ?? 0;
+        : existingProject?.invoice_amount ?? null;
+    const work_time = existingProject?.work_time ?? 0;
     const hourlyRate =
-      invoiceAmount != null && workTime != null
-        ? +((invoiceAmount / Math.round(+workTime)) * 60).toFixed(2)
+      invoice_amount != null && work_time != null
+        ? +((invoice_amount / Math.round(+work_time)) * 60).toFixed(2)
         : null;
 
     const data = {
@@ -87,11 +102,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       rate,
       contractor,
       client,
-      workplaceUrl,
-      dateBooked,
-      invoiceAmount,
-      workTime,
-      hourlyRate,
+      workplace_url: workplaceUrl,
+      date_assigned: dateAssigned,
+      invoice_amount: invoice_amount,
+      work_time: work_time,
+      hourly_rate: hourlyRate,
     };
 
     if (existingProject) {

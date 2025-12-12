@@ -15,51 +15,53 @@
       <div>
         <h3>Assignments Page</h3>
         <div id="displayAssignments"></div>
-        <input type="text" id="assignmentsInput" name="assignmentsInput"/>
+        <input type="text" id="assignmentsInput" name="assignmentsInput" />
         <h3>Workplace</h3>
         <div id="displayWorkplace"></div>
-        <input type="text" id="workplaceInput" name="workplaceInput"/>
+        <input type="text" id="workplaceInput" name="workplaceInput" />
       </div>
-      <input type="button" value="Save" id="submitURLs" name="submitURLs"/>
+      <input type="button" value="Save" id="submitURLs" name="submitURLs" />
     </div>
-    <div>
-      <h2>Current Project</h2>
-      <textarea>Title: Runtime: Invoice Amount: Hourly Rate: Rate: Contractor: Client: Date Booked: </textarea>
-    </div>
+
     <form id="newProjectForm">
       <h2>New Project</h2>
       <div id="defaultFields">
         <div class="input-group">
           <label for="title-input">Title</label>
-          <input type="text" id="titleInput" name="titleInput"/>
+          <input type="text" id="titleInput" name="titleInput" />
         </div>
         <div class="input-group">
           <label for="runtime-input">Runtime</label>
-          <input type="number" id="runtimeInput" name="runtimeInput"/>
+          <input type="number" id="runtimeInput" name="runtimeInput" />
         </div>
         <div class="input-group">
           <label for="rate-input">Rate</label>
-          <input type="number" id="rateInput" name="rateInput"/>
+          <input type="number" id="rateInput" name="rateInput" />
         </div>
         <div class="input-group">
           <label for="contractor-input">Contractor</label>
-          <input type="text" id="contractorInput" name="contractorInput"/>
+          <input type="text" id="contractorInput" name="contractorInput" />
         </div>
         <div class="input-group">
           <label for="client-input">Client</label>
-          <input type="text" id="clientInput" name="clientInput"/>
+          <input type="text" id="clientInput" name="clientInput" />
         </div>
         <div class="input-group">
           <label for="workplace-url-input">Url</label>
-          <input type="text" id="workplaceUrlInput" name="workplaceUrlInput"/>
+          <input type="text" id="workplaceUrlInput" name="workplaceUrlInput" />
         </div>
         <div class="input-group">
-          <label for="date-booked-input">Date Booked</label>
-          <input type="date" id="dateBookedInput" name="dateBookedInput"/>
+          <label for="date-assigned-input">Date Assigned</label>
+          <input type="date" id="dateAssignedInput" name="dateAssignedInput" />
         </div>
       </div>
       <div class="input-group">
-        <input type="button" value="Create" id="submitNewProject" name="submitNewProject"/>
+        <input
+          type="button"
+          value="Create"
+          id="submitNewProject"
+          name="submitNewProject"
+        />
       </div>
     </form>
     <script type="module" src="../js/options.js"></script>
