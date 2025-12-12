@@ -54,7 +54,10 @@ export const refreshWorkTimeForSelection = async (
     updateWorkTimeValueDisplay(0);
     return;
   }
-  const selectedSet = findStoredProjectByKey(cachedStoredProjects, selectedProjectKey);
+  const selectedSet = findStoredProjectByKey(
+    cachedStoredProjects,
+    selectedProjectKey
+  );
   if (!selectedSet) {
     updateWorkTimeValueDisplay(0);
     return;
@@ -95,4 +98,9 @@ export const sanitizeValue = (value) => {
     return sanitized;
   }
   return "";
+};
+
+export const formatProjectId = (title, episode) => {
+  const id = title + "_" + episode;
+  return id;
 };

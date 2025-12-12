@@ -55,6 +55,7 @@
       recordCount,
     };
   };
+
   const sendSnapshotToContent = () => {
     const grid = window.w2ui?.translation_jobs_grid;
     if (!grid || !Array.isArray(grid.columns) || !Array.isArray(grid.records)) {
@@ -77,6 +78,7 @@
       },
       "*"
     );
+    console.log("bridge sent snapshot to content");
 
     return true;
   };

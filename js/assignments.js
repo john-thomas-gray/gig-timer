@@ -4,6 +4,7 @@ document.documentElement.appendChild(script);
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "REQUEST_ASSIGNMENTS_DATA") {
+    console.log("content received data request");
     window.postMessage(
       {
         source: "work-timer-content",
@@ -21,6 +22,7 @@ window.addEventListener("message", (event) => {
     event.data.source === "work-timer-bridge" &&
     event.data.type === "RETURN_W2UI_DATA"
   ) {
+    console.log("content received return request");
     chrome.runtime.sendMessage(event.data);
   }
 });
