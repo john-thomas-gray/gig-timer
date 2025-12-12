@@ -1,9 +1,16 @@
-function handleMessages(message, sender, sendResponse) {
-  if (message.action !== "request-workplace-id") return;
-  console.log("message received");
-  const idSpan = document.getElementsByClassName("mse-project-title");
-  sendResponse({ id: idSpan });
-  return true;
-}
-
-chrome.runtime.onMessage.addListener(handleMessages);
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (
+    msg.source === "service-worker.js" &&
+    msg.action === "request-workplace-id"
+  ) {
+    const idSpan = document.getElementById("header-full-title");
+    if (!idSpan) {
+      sendResponse({ error: "No workplaceId found in DOM." });
+      return;
+    }
+    const id = idSpan.textContent.trim();
+    console.log("span:", id);
+    sendResponse({ data: id });
+    return true;
+  }
+});

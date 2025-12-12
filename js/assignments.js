@@ -1,28 +1,35 @@
-const script = document.createElement("script");
-script.src = chrome.runtime.getURL("js/assignments-bridge.js");
-document.documentElement.appendChild(script);
-
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action === "REQUEST_ASSIGNMENTS_DATA") {
-    console.log("content received data request");
-    window.postMessage(
-      {
-        source: "work-timer-content",
-        type: "REQUEST_W2UI_DATA",
-      },
-      "*"
-    );
-  }
-  return true;
-});
+let pendingSendResponse = null;
 
 window.addEventListener("message", (event) => {
-  if (
-    event.source === window &&
-    event.data.source === "work-timer-bridge" &&
-    event.data.type === "RETURN_W2UI_DATA"
-  ) {
-    console.log("content received return request");
-    chrome.runtime.sendMessage(event.data);
+  if (event.data.source !== "bridge.js") return;
+  if (!pendingSendResponse) return;
+
+  if (event.data.type === "RETURN_W2UI_DATA") {
+    pendingSendResponse({
+      type: "RETURN_W2UI_DATA",
+      payload: event.data.payload,
+    });
+    pendingSendResponse = null;
   }
+
+  if (event.data.type === "W2UI_DATA_ERROR") {
+    pendingSendResponse({
+      type: "W2UI_DATA_ERROR",
+      payload: event.data.payload,
+    });
+    pendingSendResponse = null;
+  }
+});
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.action !== "REQUEST_ASSIGNMENTS_DATA") return;
+
+  pendingSendResponse = sendResponse;
+
+  window.postMessage(
+    { source: "assignments.js", type: "REQUEST_W2UI_DATA" },
+    "*"
+  );
+
+  return true;
 });

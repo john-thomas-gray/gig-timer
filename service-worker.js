@@ -4,7 +4,7 @@ import { formatProjectId } from "./utils.js";
 const storageCache = { count: 0, urls: {}, projects: [] };
 let currentTabId = null;
 let currentUrl = null;
-let projectId = null;
+let workplaceId = null;
 
 async function initStorageCache() {
   const items = await chrome.storage.sync.get([
@@ -39,20 +39,13 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 
   currentTabId = tabId;
   currentUrl = url;
-
+  /* CHECK URLS */
   if (url.includes(assignmentsUrl)) {
-    chrome.tabs.sendMessage(currentTabId, {
-      action: "REQUEST_ASSIGNMENTS_DATA",
-    });
-    console.log("on assignments page");
+    setUpAssignmentsPage();
   } else if (url.includes(workplaceUrl)) {
-    // } else {
-    console.log("on workplace page");
-    await getProjectId();
-    await setProjectUrl();
-    await initStopwatch();
-    startStopwatch();
+    await setUpWorkplacePage();
   }
+  /* CHECK URLS */
 });
 
 chrome.tabs.onRemoved.addListener(() => {
@@ -62,46 +55,72 @@ chrome.tabs.onRemoved.addListener(() => {
 let stopwatchInterval = null;
 let elapsedTime = 0;
 
-async function getProjectId() {
-  console.log("get project id");
-  const response = await chrome.runtime.sendMessage({
-    action: "request-workplace_id",
-  });
-  const { id } = response;
+async function getWorkplaceId() {
+  try {
+    const response = await chrome.tabs.sendMessage(currentTabId, {
+      action: "request-workplace-id",
+      source: "service-worker.js",
+    });
+    console.log(response, "kokomo");
+    const id = response.data;
 
-  projectId = id;
-  console.log("projectid", projectId);
-  return id;
+    console.log(id);
+
+    return id;
+  } catch (error) {
+    console.error("Failed to get workplace ID:", error);
+    return null;
+  }
 }
 
-async function setProjectUrl(id) {
+async function setUpWorkplacePage() {
+  workplaceId = await getWorkplaceId();
+  if (!workplaceId) {
+    console.error("Failed to set up workpage. No workplaceId.");
+    return;
+  }
+
+  setProjectUrl(workplaceId);
+  initStopwatch();
+  startStopwatch();
+}
+
+function setProjectUrl(id) {
   const p = getCurrentProject(id);
 
-  p.workplace_url = url;
+  if (p.workplace_url) return;
+  p.workplace_url = currentUrl;
 
   const updatedProjects = storageCache.projects.map((project) => {
     if (project.id === id) {
-      return { ...project, workplace_url: url };
+      return { ...project, workplace_url: currentUrl };
     }
     return project;
   });
-  console.log("updated projects", updatedProjects);
 
   chrome.storage.sync.set({ projects: updatedProjects }, () => {
-    console.log(`Updated workplace_url for project ${currentProject.id}:`, url);
+    console.log(`Updated workplace_url for project ${p.id}:`, url);
     storageCache.projects = updatedProjects;
   });
 }
 
-async function getCurrentProject(projectId) {
+function getCurrentProject(workplaceId) {
   const projects = storageCache.projects;
-  const currentProject = projects.find((p) => p.id === projectId);
+  /* Bandaid making Id checking less strict
+  project.id = "Betrayal: Secrets and Lies: Season 1: Episode 1: Episode 1 (E0001)"
+  workplaceId = "Betrayal: Secrets and Lies: Season 1: Episode 1: Episode 1"
+  */
+  const currentProject = projects.find((p) => p.id.includes(workplaceId));
+  if (!currentProject) {
+    console.warn("No project corresponding to id:", workplaceId);
+    return;
+  }
   return currentProject;
 }
 
-async function initStopwatch(tabId = null, url = null) {
+function initStopwatch(tabId = null, url = null) {
   if (tabId) currentTabId = tabId;
-  const currentProject = await getCurrentProject();
+  const currentProject = getCurrentProject(workplaceId);
   if (!currentProject) {
     console.warn("Current project not found");
     elapsedTime = 0;
@@ -129,14 +148,15 @@ function startStopwatch() {
   }, 1000);
 }
 
-async function pauseStopwatch() {
+function pauseStopwatch() {
   const projects = storageCache.projects;
-  const currentProject = await getCurrentProject();
-  if (!currentProject) return;
+
+  const currentProject = projects.find((project) => project.id === workplaceId);
 
   clearInterval(stopwatchInterval);
   stopwatchInterval = null;
 
+  if (!currentProject) return;
   currentProject.workTime = elapsedTime;
 
   chrome.storage.sync.set({ projects }, () => {
@@ -146,9 +166,9 @@ async function pauseStopwatch() {
   updateDisplay();
 }
 
-async function setElapsedTime(seconds) {
+function setElapsedTime(seconds) {
   const projects = storageCache.projects;
-  const currentProject = await getCurrentProject();
+  const currentProject = getCurrentProject(workplaceId);
   if (!currentProject) return;
   elapsedTime = seconds;
 
@@ -162,14 +182,6 @@ async function setElapsedTime(seconds) {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.action === "start-stopwatch") startStopwatch();
   if (msg.action === "reset-time-since-last-action") resetTimeSinceLastAction();
-
-  if (msg.type === "RETURN_W2UI_DATA") {
-    handleAssignmentSnapshot(msg.payload.snapshot);
-    console.log("SW received return w2ui");
-  }
-  if (msg.type === "W2UI_DATA_ERROR") {
-    console.warn("Failed to get assignment data:", msg.payload);
-  }
 });
 
 let timeSinceLastAction = 0;
@@ -212,10 +224,40 @@ function checkIdle() {
 
 // Assignments
 
+async function setUpAssignmentsPage() {
+  console.log("on assignment page");
+  let response;
+  try {
+    response = await chrome.tabs.sendMessage(currentTabId, {
+      action: "REQUEST_ASSIGNMENTS_DATA",
+    });
+  } catch (e) {
+    console.warn("Failed to send message:", e);
+    return;
+  }
+  if (!response) {
+    console.warn("No response from content script");
+    return;
+  }
+  if (response.type === "W2UI_DATA_ERROR") {
+    throw new Error(
+      "Error getting W2UI assignments data. Reason:",
+      response.payload.reason,
+      "Current state:",
+      response.payload.state
+    );
+  }
+  if (response.type === "RETURN_W2UI_DATA") {
+    handleAssignmentSnapshot(response.payload.snapshot);
+  }
+}
+
 async function handleAssignmentSnapshot(snapshot) {
   const w2uiData = snapshot.records;
 
-  if (!Array.isArray(w2uiData)) return;
+  if (!Array.isArray(w2uiData)) {
+    throw new Error("Invalid data shape");
+  }
 
   const existingProjects = storageCache.projects || [];
 
