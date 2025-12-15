@@ -1,14 +1,15 @@
 "use strict";
 
 (() => {
-  // Prevent running the bridge multiple times.
+  // Prevent running the bridge multiple times
   const BRIDGE_FLAG = "__workTimerBridgeInitialized";
-  if (window[BRIDGE_FLAG]) {
-    return;
-  }
+  if (window[BRIDGE_FLAG]) return;
   window[BRIDGE_FLAG] = true;
 
-  // Extracts only valid string-based identifiers from a w2ui column.
+  // Store a reference to the message listener for cleanup
+  let messageListener = null;
+
+  // Extracts only valid string-based identifiers from a w2ui column
   const sanitizeColumnDescriptor = (column) => {
     const descriptor = {};
     const addIfString = (key, value) => {
@@ -25,7 +26,7 @@
     return descriptor;
   };
 
-  // Removes functions from a record to ensure it's serializable.
+  // Removes functions from a record to ensure it's serializable
   const sanitizeRecord = (record) => {
     const sanitized = {};
     Object.keys(record ?? {}).forEach((key) => {
@@ -58,12 +59,13 @@
   const MAX_ATTEMPTS = 1;
   const ATTEMPT_DELAY_MS = 500;
 
-  window.addEventListener("message", (event) => {
+  // Define the listener once
+  messageListener = (event) => {
     if (
       event.data.source !== "assignments.js" ||
       event.data.type !== "REQUEST_W2UI_DATA"
     ) {
-      console.warn("wrong input to bridge");
+      // ignore other messages
       return;
     }
 
@@ -88,8 +90,7 @@
           );
           return;
         }
-
-        setTimeout(() => attemptSendSnapshot(attempt + 30), ATTEMPT_DELAY_MS);
+        setTimeout(() => attemptSendSnapshot(attempt + 1), ATTEMPT_DELAY_MS);
         return;
       }
 
@@ -113,7 +114,26 @@
     };
 
     attemptSendSnapshot();
+  };
+
+  window.addEventListener("message", messageListener);
+
+  window.addEventListener("beforeunload", () => {
+    if (messageListener) {
+      window.removeEventListener("message", messageListener);
+      messageListener = null;
+    }
   });
 
-  // Workplace
+  let lastUrl = location.href;
+  const checkUrlChange = () => {
+    if (location.href !== lastUrl) {
+      if (messageListener) {
+        window.removeEventListener("message", messageListener);
+        messageListener = null;
+      }
+      lastUrl = location.href;
+    }
+  };
+  setInterval(checkUrlChange, 500);
 })();

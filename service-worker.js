@@ -1,5 +1,8 @@
 import { projectTemplate } from "./constants.js";
-import { formatProjectId } from "./utils.js";
+
+const CONTINUE_PAGE = "__CONTINUE_PAGE__";
+
+let stopwatchRunning = false;
 
 const storageCache = { count: 0, urls: {}, projects: [] };
 let currentTabId = null;
@@ -35,17 +38,14 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
   const { assignments: assignmentsUrl, workplace: workplaceUrl } =
     storageCache.urls;
 
-  if (!assignmentsUrl && !workplaceUrl) return;
-
   currentTabId = tabId;
   currentUrl = url;
-  /* CHECK URLS */
-  if (url.includes(assignmentsUrl)) {
+
+  if (assignmentsUrl && url.includes(assignmentsUrl)) {
     setUpAssignmentsPage();
-  } else if (url.includes(workplaceUrl)) {
+  } else if (workplaceUrl && url.includes(workplaceUrl)) {
     await setUpWorkplacePage();
   }
-  /* CHECK URLS */
 });
 
 chrome.tabs.onRemoved.addListener(() => {
@@ -72,34 +72,43 @@ async function getWorkplaceId() {
 }
 
 async function setUpWorkplacePage() {
-  workplaceId = await getWorkplaceId();
-  if (!workplaceId) {
-    console.error("Failed to set up workpage. No workplaceId.");
-    return;
-  }
+  try {
+    workplaceId = await getWorkplaceId();
 
-  setProjectUrl(workplaceId);
-  initStopwatch();
-  startStopwatch();
+    if (workplaceId === CONTINUE_PAGE) {
+      console.log("Skipping setup for continue page");
+      return;
+    }
+
+    setProjectUrl(workplaceId);
+    initStopwatch();
+    startStopwatch();
+  } catch (error) {
+    console.error("Failed to set up workplace page:", error);
+  }
 }
 
 function setProjectUrl(id) {
-  const p = getProjectById(id);
+  try {
+    const p = getProjectById(id);
 
-  if (p.workplace_url) return;
-  p.workplace_url = currentUrl;
+    if (p.workplace_url) return;
+    p.workplace_url = currentUrl;
 
-  const updatedProjects = storageCache.projects.map((project) => {
-    if (project.id === id) {
-      return { ...project, workplace_url: currentUrl };
-    }
-    return project;
-  });
+    const updatedProjects = storageCache.projects.map((project) => {
+      if (project.id === id) {
+        return { ...project, workplace_url: currentUrl };
+      }
+      return project;
+    });
 
-  chrome.storage.sync.set({ projects: updatedProjects }, () => {
-    console.log(`Updated workplace_url for project ${p.id}:`, url);
-    storageCache.projects = updatedProjects;
-  });
+    chrome.storage.sync.set({ projects: updatedProjects }, () => {
+      console.log(`Updated workplace_url for project ${p.id}:`, url);
+      storageCache.projects = updatedProjects;
+    });
+  } catch (e) {
+    console.error("Failed to set project URL:", e);
+  }
 }
 
 function getProjectById(workplaceId) {
@@ -109,11 +118,12 @@ function getProjectById(workplaceId) {
   workplaceId = "Betrayal: Secrets and Lies: Season 1: Episode 1: Episode 1"
   */
   const currentProject = projects.find((p) => p.id.includes(workplaceId));
-  if (!currentProject) {
-    console.warn("No project corresponding to id:", workplaceId);
-    return;
-  }
-  return currentProject;
+  if (currentProject) return currentProject;
+}
+
+function createStopwatchElement() {
+  clearInterval(stopwatchInterval);
+  chrome.tabs.sendMessage(currentTabId, { action: "create-stopwatch-element" });
 }
 
 function initStopwatch(tabId = null, url = null) {
@@ -125,66 +135,82 @@ function initStopwatch(tabId = null, url = null) {
     return;
   }
   elapsedTime = currentProject.workTime || 0;
+  createStopwatchElement();
   updateDisplay();
 }
 
 function updateDisplay() {
   if (!currentTabId) return;
-  checkIdle();
-  chrome.tabs.sendMessage(currentTabId, {
-    action: "update-display",
-    elapsedTime,
-  });
+  try {
+    checkIdle();
+    chrome.tabs.sendMessage(currentTabId, {
+      action: "update-display",
+      elapsedTime,
+    });
+  } catch (error) {
+    console.error("Failed to update display:", error);
+  }
 }
 
 function startStopwatch() {
   clearInterval(stopwatchInterval);
-  chrome.tabs.sendMessage(currentTabId, { action: "create-stopwatch-element" });
   stopwatchInterval = setInterval(() => {
     elapsedTime++;
     updateDisplay();
   }, 1000);
+
+  stopwatchRunning = true;
 }
 
 function pauseStopwatch() {
-  const projects = storageCache.projects;
+  try {
+    if (!stopwatchRunning) return;
 
-  const currentProject = getProjectById(workplaceId);
+    const projects = storageCache.projects;
 
-  clearInterval(stopwatchInterval);
-  stopwatchInterval = null;
+    const currentProject = getProjectById(workplaceId);
 
-  if (!currentProject) return;
-  currentProject.workTime = elapsedTime;
+    clearInterval(stopwatchInterval);
+    stopwatchInterval = null;
+    stopwatchRunning = false;
 
-  chrome.storage.sync.set({ projects }, () => {
-    console.log("Work time saved:", elapsedTime);
-  });
+    currentProject.workTime = elapsedTime;
 
-  updateDisplay();
+    chrome.storage.sync.set({ projects }, () => {
+      console.log("Work time saved:", elapsedTime);
+    });
+
+    updateDisplay();
+  } catch (error) {
+    console.error("Failed to pause stopwatch:", error);
+  }
 }
 
 function setElapsedTime(seconds) {
-  const projects = storageCache.projects;
-  const currentProject = getProjectById(workplaceId);
-  if (!currentProject) return;
-  elapsedTime = seconds;
+  try {
+    const projects = storageCache.projects;
+    const currentProject = getProjectById(workplaceId);
+    if (!currentProject) return;
+    elapsedTime = seconds;
 
-  currentProject.workTime = elapsedTime;
+    currentProject.workTime = elapsedTime;
 
-  chrome.storage.sync.set({ projects }, () => {
-    console.log("Work time saved:", elapsedTime);
-  });
+    chrome.storage.sync.set({ projects }, () => {
+      console.log("Work time saved:", elapsedTime);
+    });
+  } catch (e) {
+    console.error("Failed to set elapsed time:", e);
+  }
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.action === "reset-time-since-last-action") resetTimeSinceLastAction();
+  if (msg.action === "unpause-stopwatch") unpauseStopwatch();
 });
 
 let timeSinceLastAction = 0;
 let isIdle = false;
 
-function resetTimeSinceLastAction() {
+function unpauseStopwatch() {
   timeSinceLastAction = 0;
   if (isIdle) {
     isIdle = false;
@@ -195,10 +221,10 @@ function resetTimeSinceLastAction() {
 function setIdle() {
   if (!isIdle) {
     isIdle = true;
-    pauseStopwatch();
-
     const adjustedElapsed = Math.max(elapsedTime - timeSinceLastAction, 0);
     elapsedTime = adjustedElapsed;
+
+    pauseStopwatch();
 
     if (currentTabId) {
       chrome.tabs.sendMessage(currentTabId, {
@@ -213,7 +239,7 @@ function setIdle() {
 
 function checkIdle() {
   timeSinceLastAction++;
-  const idleThreshold = 30;
+  const idleThreshold = 15;
   if (!isIdle && timeSinceLastAction > idleThreshold) {
     setIdle();
   }
@@ -228,71 +254,72 @@ async function setUpAssignmentsPage() {
       action: "request-assignments-data",
     });
     console.log(response);
+    if (!response) {
+      console.warn("No response from content script");
+      return;
+    }
+    if (response.type === "W2UI_DATA_ERROR") {
+      throw new Error(
+        `Error getting W2UI assignments data. Reason: ${response.payload.reason}. Current state: ${response.payload.state}`
+      );
+    }
+    if (response.type === "RETURN_W2UI_DATA") {
+      handleAssignmentSnapshot(response.payload.snapshot);
+    }
   } catch (e) {
     console.warn("Failed to send message:", e);
     return;
   }
-  if (!response) {
-    console.warn("No response from content script");
-    return;
-  }
-  if (response.type === "W2UI_DATA_ERROR") {
-    throw new Error(
-      "Error getting W2UI assignments data. Reason:",
-      response.payload.reason,
-      "Current state:",
-      response.payload.state
-    );
-  }
-  if (response.type === "RETURN_W2UI_DATA") {
-    handleAssignmentSnapshot(response.payload.snapshot);
-  }
 }
 
 async function handleAssignmentSnapshot(snapshot) {
-  const w2uiData = snapshot.records;
+  try {
+    const w2uiData = snapshot.records;
 
-  if (!Array.isArray(w2uiData)) {
-    throw new Error("Invalid data shape");
-  }
+    if (!Array.isArray(w2uiData)) {
+      throw new Error("Invalid data shape");
+    }
 
-  const existingProjects = storageCache.projects || [];
+    const existingProjects = storageCache.projects || [];
 
-  const newProjectArray = await parseW2uiData(w2uiData);
+    const newProjectArray = await parseW2uiData(w2uiData);
 
-  const projectMap = new Map();
-  existingProjects.forEach((p) => {
-    const id = p.id;
-    projectMap.set(id, p);
-  });
-
-  newProjectArray.forEach((p) => {
-    const existing = projectMap.get(p.id) || {};
-    const merged = {};
-
-    Object.keys(projectTemplate).forEach((key) => {
-      if (key in p) {
-        merged[key] = p[key];
-      } else if (key in existing) merged[key] = existing[key];
-      else merged[key] = projectTemplate[key];
+    const projectMap = new Map();
+    existingProjects.forEach((p) => {
+      const id = p.id;
+      projectMap.set(id, p);
     });
 
-    merged.id = p.id;
-    projectMap.set(p.id, merged);
-  });
+    newProjectArray.forEach((p) => {
+      const existing = projectMap.get(p.id) || {};
+      const merged = {};
 
-  const mergedProjects = Array.from(projectMap.values());
-  storageCache.projects = mergedProjects;
+      Object.keys(projectTemplate).forEach((key) => {
+        if (key in p) {
+          merged[key] = p[key];
+        } else if (key in existing) merged[key] = existing[key];
+        else merged[key] = projectTemplate[key];
+      });
 
-  chrome.storage.sync.set({ projects: mergedProjects }, () => {
-    console.log("Projects saved:", mergedProjects);
-  });
+      merged.id = p.id;
+      projectMap.set(p.id, merged);
+    });
+
+    const mergedProjects = Array.from(projectMap.values());
+    storageCache.projects = mergedProjects;
+
+    chrome.storage.sync.set({ projects: mergedProjects }, () => {
+      console.log("Projects saved:", mergedProjects);
+    });
+  } catch (e) {
+    console.error("Failed to handle assignment snapshot:", error);
+  }
 }
 
 // W2UI Data Parsing
 
 async function parseW2uiData(w2uiArray) {
-  return w2uiArray.map(getRelevantData);
+  return w2uiArray.map(getProjectData);
 }
 
 const w2ToProjectMap = {
@@ -302,7 +329,7 @@ const w2ToProjectMap = {
   title: "title",
 };
 
-function getRelevantData(object) {
+function getProjectData(object) {
   const newProjectData = {};
 
   Object.keys(object).forEach((key) => {
@@ -311,12 +338,20 @@ function getRelevantData(object) {
       let value = object[key];
 
       if (formattedKey === "date_due" || formattedKey === "date_assigned") {
-        value = formatDate(value);
+        try {
+          value = formatDate(value);
+        } catch (e) {
+          console.error("Failed to format date:", e);
+        }
       } else if (formattedKey === "title") {
-        const values = formatTitleAndEpisode(value);
-        value = values.title;
-        newProjectData["episode"] = values.episode;
-        newProjectData["id"] = object["title"];
+        try {
+          const values = formatTitleAndEpisode(value);
+          value = values.title;
+          newProjectData["episode"] = values.episode;
+          newProjectData["id"] = object["title"];
+        } catch (e) {
+          console.error("Failed to format title or episode:", e);
+        }
       }
 
       newProjectData[formattedKey] = value;
@@ -365,3 +400,5 @@ function formatDate(dateString) {
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+/* Add the inject-bridge calls here. Need to be able to check that we are on the right dynamic url */

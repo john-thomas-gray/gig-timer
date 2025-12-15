@@ -1,3 +1,5 @@
+injectBridge();
+
 let stopwatchElement = null;
 
 function createStopwatchElement() {
@@ -16,6 +18,12 @@ function createStopwatchElement() {
     document.body.appendChild(stopwatchElement);
   }
   return stopwatchElement;
+}
+
+function removeStopwatchElement() {
+  if (stopwatchElement) {
+    stopwatchElement.remove();
+  }
 }
 
 function formatTime(seconds) {
@@ -41,22 +49,25 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg.action === "create-stopwatch-element") {
     createStopwatchElement();
   }
+  if (msg.action === "remove-stopwatch-element") {
+    removeStopwatchElement();
+  }
 });
 
-document.addEventListener("pointermove", resetTimeSinceLastAction);
-document.addEventListener("keypress", resetTimeSinceLastAction);
+// Prevent these from firing unless paused
+document.addEventListener("pointermove", unpauseStopwatch);
+document.addEventListener("keypress", unpauseStopwatch);
 
 let lastSent = 0;
 const THROTTLE_MS = 1000;
 
-function resetTimeSinceLastAction() {
+function unpauseStopwatch() {
   const now = Date.now();
   if (now - lastSent < THROTTLE_MS) return;
 
   lastSent = now;
-
   chrome.runtime.sendMessage({
-    action: "reset-time-since-last-action",
+    action: "unpause-stopwatch",
     url: window.location.href,
   });
 }
