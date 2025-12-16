@@ -21,7 +21,8 @@
         "bridge/inject-bridge.js",
         "js/stopwatch.js",
         "js/assignments.js",
-        "js/workplace.js"
+        "js/workplace.js",
+        "js/idle-overlay.js"
       ]
     }
   ],

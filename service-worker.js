@@ -1,4 +1,6 @@
+"use strict";
 import { projectTemplate } from "./constants.js";
+import { formatDate, formatTitleAndEpisode } from "./normalization.js";
 
 const CONTINUE_PAGE = "__CONTINUE_PAGE__";
 
@@ -48,12 +50,13 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
   }
 });
 
-chrome.tabs.onRemoved.addListener(() => {
-  pauseStopwatch();
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.url !== workplaceUrl) return;
+  if (msg.action === "store-elapsed-time") storeWorkTime(msg.elapsedTime || 0);
 });
 
 let stopwatchInterval = null;
-let elapsedTime = 0;
+let workTime = 0;
 
 async function getWorkplaceId() {
   try {
@@ -79,10 +82,7 @@ async function setUpWorkplacePage() {
       console.log("Skipping setup for continue page");
       return;
     }
-
     setProjectUrl(workplaceId);
-    initStopwatch();
-    startStopwatch();
   } catch (error) {
     console.error("Failed to set up workplace page:", error);
   }
@@ -121,45 +121,19 @@ function getProjectById(workplaceId) {
   if (currentProject) return currentProject;
 }
 
-function createStopwatchElement() {
-  clearInterval(stopwatchInterval);
-  chrome.tabs.sendMessage(currentTabId, { action: "create-stopwatch-element" });
-}
-
-function initStopwatch(tabId = null, url = null) {
+function createStopwatch() {
   if (tabId) currentTabId = tabId;
   const currentProject = getProjectById(workplaceId);
   if (!currentProject) {
     console.warn("Current project not found");
-    elapsedTime = 0;
     return;
   }
-  elapsedTime = currentProject.work_time || 0;
-  createStopwatchElement();
-  updateDisplay();
-}
-
-function updateDisplay() {
-  if (!currentTabId) return;
-  try {
-    checkIdle();
-    chrome.tabs.sendMessage(currentTabId, {
-      action: "update-display",
-      elapsedTime,
-    });
-  } catch (error) {
-    console.error("Failed to update display:", error);
-  }
-}
-
-function startStopwatch() {
+  workTime = currentProject.work_time || 0;
   clearInterval(stopwatchInterval);
-  stopwatchInterval = setInterval(() => {
-    elapsedTime++;
-    updateDisplay();
-  }, 1000);
-
-  stopwatchRunning = true;
+  chrome.tabs.sendMessage(currentTabId, {
+    action: "create-stopwatch",
+    workTime: workTime,
+  });
 }
 
 function pauseStopwatch() {
@@ -174,10 +148,10 @@ function pauseStopwatch() {
     stopwatchInterval = null;
     stopwatchRunning = false;
 
-    currentProject.work_time = elapsedTime;
+    currentProject.work_time = workTime;
 
     chrome.storage.sync.set({ projects }, () => {
-      console.log("Work time saved:", elapsedTime);
+      console.log("Work time saved:", workTime);
     });
 
     updateDisplay();
@@ -186,62 +160,20 @@ function pauseStopwatch() {
   }
 }
 
-function setElapsedTime(seconds) {
+function storeWorkTime(seconds) {
   try {
     const projects = storageCache.projects;
     const currentProject = getProjectById(workplaceId);
     if (!currentProject) return;
-    elapsedTime = seconds;
+    workTime = seconds;
 
-    currentProject.work_time = elapsedTime;
+    currentProject.work_time = workTime;
 
     chrome.storage.sync.set({ projects }, () => {
-      console.log("Work time saved:", elapsedTime);
+      console.log("Work time saved:", workTime);
     });
   } catch (e) {
     console.error("Failed to set elapsed time:", e);
-  }
-}
-
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.action === "unpause-stopwatch") unpauseStopwatch();
-});
-
-let timeSinceLastAction = 0;
-let isIdle = false;
-
-function unpauseStopwatch() {
-  timeSinceLastAction = 0;
-  if (isIdle) {
-    isIdle = false;
-    startStopwatch();
-  }
-}
-
-function setIdle() {
-  if (!isIdle) {
-    isIdle = true;
-    const adjustedElapsed = Math.max(elapsedTime - timeSinceLastAction, 0);
-    elapsedTime = adjustedElapsed;
-
-    pauseStopwatch();
-
-    if (currentTabId) {
-      chrome.tabs.sendMessage(currentTabId, {
-        action: "update-display",
-        elapsedTime: elapsedTime,
-      });
-    }
-
-    setElapsedTime(adjustedElapsed);
-  }
-}
-
-function checkIdle() {
-  timeSinceLastAction++;
-  const idleThreshold = 5;
-  if (!isIdle && timeSinceLastAction > idleThreshold) {
-    setIdle();
   }
 }
 
@@ -363,42 +295,6 @@ function getProjectData(object) {
   );
 
   return newProjectData;
-}
-
-function formatTitleAndEpisode(title) {
-  const parts = title.split(":").map((part) => part.trim());
-
-  let titleParts = [];
-  let season = null;
-  let episode = null;
-
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    const seasonMatch = part.match(/^Season (\d+)$/);
-    if (seasonMatch) {
-      season = seasonMatch[1];
-
-      if (i + 1 < parts.length) {
-        const episodeMatch = parts[i + 1].match(/^Episode (\d+)/);
-        if (episodeMatch) episode = episodeMatch[1];
-      }
-      break;
-    }
-    titleParts.push(part);
-  }
-
-  const formattedTitle = titleParts.join(": ");
-  const episodeFormatted = season && episode ? `S${season}_E${episode}` : null;
-
-  return { title: formattedTitle, episode: episodeFormatted };
-}
-
-function formatDate(dateString) {
-  const date = new Date(dateString);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 /* Add the inject-bridge calls here. Need to be able to check that we are on the right dynamic url */

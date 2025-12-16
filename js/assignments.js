@@ -1,51 +1,31 @@
 injectBridge();
 
-let pendingSendResponse = null;
-
-const bridgeMessageListener = (event) => {
-  if (event.data.source !== "bridge.js") return;
-  if (!pendingSendResponse) return;
-
-  if (event.data.type === "RETURN_W2UI_DATA") {
-    pendingSendResponse({
-      type: "RETURN_W2UI_DATA",
-      payload: event.data.payload,
-    });
-    pendingSendResponse = null;
-  }
-
-  if (event.data.type === "W2UI_DATA_ERROR") {
-    pendingSendResponse({
-      type: "W2UI_DATA_ERROR",
-      payload: event.data.payload,
-    });
-    pendingSendResponse = null;
-  }
-};
-
-window.addEventListener("message", bridgeMessageListener);
+const pending = new Map();
 
 const runtimeMessageListener = (msg, sender, sendResponse) => {
   if (msg.action !== "request-assignments-data") return;
-  pendingSendResponse = sendResponse;
+
+  const id = crypto.randomUUID();
+  pending.set(id, sendResponse);
+
   window.postMessage(
-    { source: "assignments.js", type: "REQUEST_W2UI_DATA" },
+    { source: "assignments.js", type: "REQUEST_W2UI_DATA", id },
     "*"
   );
 
   return true;
 };
 
-chrome.runtime.onMessage.addListener(runtimeMessageListener);
+const bridgeMessageListener = (event) => {
+  if (event.data.source !== "bridge.js") return;
 
-function cleanup() {
-  window.removeEventListener("message", bridgeMessageListener);
-  chrome.runtime.onMessage.removeListener(runtimeMessageListener);
-  pendingSendResponse = null;
+  const sendResponse = pending.get(event.data.id);
+  if (!sendResponse) return;
 
-  window.removeEventListener("beforeunload", cleanup);
-  window.removeEventListener("pagehide", cleanup);
-}
+  sendResponse({
+    type: event.data.type,
+    payload: event.data.payload,
+  });
 
-window.addEventListener("beforeunload", cleanup);
-window.addEventListener("pagehide", cleanup);
+  pending.delete(event.data.id);
+};

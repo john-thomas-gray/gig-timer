@@ -1,6 +1,43 @@
 injectBridge();
 
+/* Initialize self. Request existing workTime, await response. Start stopwatch. */
+
 let stopwatchElement = null;
+let stopwatchInterval = null;
+let timeSinceLastAction = 0;
+let isIdle = false;
+let elapsedTime = 0;
+let stopwatchRunning = false;
+
+const workplaceUrl = await getWorkplaceUrl();
+const settings = await getSettings();
+
+async function getWorkplaceUrl() {
+  try {
+    const urls = await chrome.storage.sync.get(["urls"]);
+    const workplaceUrl = urls.workplace;
+
+    return workplaceUrl;
+  } catch (e) {
+    console.error("Failed to get workplace url.", e);
+  }
+}
+
+async function getSettings() {
+  const defaultSettings = {
+    idle_threshold: 30,
+  };
+  try {
+    const settings = await chrome.storage.sync.get(["settings"]);
+    if (!settings) {
+      settings = defaultSettings;
+      console.warn("Failed to get stopwatch settings. Applied defaults.");
+    }
+    return settings;
+  } catch (e) {
+    console.error("Failed to get stopwatch settings.", e);
+  }
+}
 
 function createStopwatchElement() {
   if (!stopwatchElement) {
@@ -26,6 +63,88 @@ function removeStopwatchElement() {
   }
 }
 
+function updateDisplay(time) {
+  const el = createStopwatchElement();
+  el.textContent = `Time elapsed: ${formatTime(time)}`;
+}
+
+let lastStartCall = 0;
+function start() {
+  const THROTTLE_MS = 1000;
+  const now = Date.now();
+  if (now - lastStartCall < THROTTLE_MS) {
+    return;
+  }
+  lastStartCall = now;
+  stopwatchRunning = true;
+
+  chrome.runtime.sendMessage({
+    action: "stopwatch-started",
+    url: window.location.href,
+  });
+
+  clearInterval(stopwatchInterval);
+  stopwatchInterval = setInterval(() => {
+    if (!stopwatchRunning) return;
+    checkIdle();
+    elapsedTime++;
+    updateDisplay();
+  }, 1000);
+}
+
+function checkIdle() {
+  if (isIdle) return;
+  timeSinceLastAction++;
+  const idleThreshold = settings?.idle_threshold;
+  if (timeSinceLastAction > idleThreshold) {
+    isIdle = true;
+    const adjustedElapsed = Math.max(elapsedTime - timeSinceLastAction, 0);
+    elapsedTime = adjustedElapsed;
+
+    pause();
+  }
+}
+
+async function storeElapsedTime(elapsedTime) {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: "store-elapsed-time",
+      elapsedTime: elapsedTime,
+      url: window.location.href,
+    });
+    return response.message;
+  } catch (e) {
+    console.error("Failed to store elapsed time:", e);
+  }
+}
+
+document.addEventListener("pointermove", monitorUserActions);
+document.addEventListener("keypress", monitorUserActions);
+
+let lastUserActionCall = 0;
+function monitorUserActions() {
+  const idleThreshold = settings?.idleThreshold ?? 3000;
+  const THROTTLE_MS = idleThreshold * 0.9;
+  const now = Date.now();
+
+  if (now - lastUserActionCall < THROTTLE_MS) {
+    return;
+  }
+
+  lastUserActionCall = now;
+
+  if (!isIdle) {
+    timeSinceLastAction = 0;
+  }
+}
+
+async function pause(seconds) {
+  stopwatchRunning = false;
+
+  clearInterval(stopwatchInterval);
+  await storeElapsedTime(elapsedTime);
+}
+
 function formatTime(seconds) {
   const hrs = Math.floor(seconds / 3600)
     .toString()
@@ -35,39 +154,4 @@ function formatTime(seconds) {
     .padStart(2, "0");
   const secs = (seconds % 60).toString().padStart(2, "0");
   return `${hrs}:${mins}:${secs}`;
-}
-
-function updateDisplay(time) {
-  const el = createStopwatchElement();
-  el.textContent = `Time elapsed: ${formatTime(time)}`;
-}
-
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.action === "update-display") {
-    updateDisplay(msg.elapsedTime);
-  }
-  if (msg.action === "create-stopwatch-element") {
-    createStopwatchElement();
-  }
-  if (msg.action === "remove-stopwatch-element") {
-    removeStopwatchElement();
-  }
-});
-
-// Prevent these from firing unless paused
-document.addEventListener("pointermove", unpauseStopwatch);
-document.addEventListener("keypress", unpauseStopwatch);
-
-let lastSent = 0;
-const THROTTLE_MS = 1000;
-
-function unpauseStopwatch() {
-  const now = Date.now();
-  if (now - lastSent < THROTTLE_MS) return;
-
-  lastSent = now;
-  chrome.runtime.sendMessage({
-    action: "unpause-stopwatch",
-    url: window.location.href,
-  });
 }
