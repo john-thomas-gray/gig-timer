@@ -103,7 +103,7 @@ function setProjectUrl(id) {
     });
 
     chrome.storage.sync.set({ projects: updatedProjects }, () => {
-      console.log(`Updated workplace_url for project ${p.id}:`, url);
+      console.log(`Updated workplace_url for project ${p.id}:`, workplace_url);
       storageCache.projects = updatedProjects;
     });
   } catch (e) {
@@ -134,7 +134,7 @@ function initStopwatch(tabId = null, url = null) {
     elapsedTime = 0;
     return;
   }
-  elapsedTime = currentProject.workTime || 0;
+  elapsedTime = currentProject.work_time || 0;
   createStopwatchElement();
   updateDisplay();
 }
@@ -174,7 +174,7 @@ function pauseStopwatch() {
     stopwatchInterval = null;
     stopwatchRunning = false;
 
-    currentProject.workTime = elapsedTime;
+    currentProject.work_time = elapsedTime;
 
     chrome.storage.sync.set({ projects }, () => {
       console.log("Work time saved:", elapsedTime);
@@ -193,7 +193,7 @@ function setElapsedTime(seconds) {
     if (!currentProject) return;
     elapsedTime = seconds;
 
-    currentProject.workTime = elapsedTime;
+    currentProject.work_time = elapsedTime;
 
     chrome.storage.sync.set({ projects }, () => {
       console.log("Work time saved:", elapsedTime);
@@ -239,7 +239,7 @@ function setIdle() {
 
 function checkIdle() {
   timeSinceLastAction++;
-  const idleThreshold = 15;
+  const idleThreshold = 5;
   if (!isIdle && timeSinceLastAction > idleThreshold) {
     setIdle();
   }
