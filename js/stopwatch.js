@@ -4,13 +4,22 @@ injectBridge();
 
 let stopwatchElement = null;
 let stopwatchInterval = null;
-let timeSinceLastAction = 0;
+let timeSinceLastAction = -1;
 let isIdle = false;
 let elapsedTime = 0;
-let stopwatchRunning = false;
+let stopwatchRunning = true;
+let lastStartCall = 0;
 
-const workplaceUrl = await getWorkplaceUrl();
-const settings = await getSettings();
+let workplaceUrl;
+let settings;
+
+async function getStorage() {
+  workplaceUrl = await getWorkplaceUrl();
+  settings = await getSettings();
+}
+
+getStorage();
+start();
 
 async function getWorkplaceUrl() {
   try {
@@ -68,8 +77,7 @@ function updateDisplay(time) {
   el.textContent = `Time elapsed: ${formatTime(time)}`;
 }
 
-let lastStartCall = 0;
-function start() {
+async function start() {
   const THROTTLE_MS = 1000;
   const now = Date.now();
   if (now - lastStartCall < THROTTLE_MS) {
@@ -77,25 +85,36 @@ function start() {
   }
   lastStartCall = now;
   stopwatchRunning = true;
+  let storedWorktime = 0;
 
-  chrome.runtime.sendMessage({
-    action: "stopwatch-started",
-    url: window.location.href,
-  });
+  try {
+    storedWorktime = await chrome.runtime.sendMessage({
+      action: "get-stored-worktime",
+      url: window.location.href,
+    });
+  } catch (e) {
+    console.error("Unable to get stored workTime", e);
+  }
+
+  elapsedTime = storedWorktime;
 
   clearInterval(stopwatchInterval);
   stopwatchInterval = setInterval(() => {
     if (!stopwatchRunning) return;
     checkIdle();
+
     elapsedTime++;
-    updateDisplay();
+    console.log(elapsedTime);
+    updateDisplay(elapsedTime);
   }, 1000);
 }
 
 function checkIdle() {
   if (isIdle) return;
+  console.log("check idle");
   timeSinceLastAction++;
-  const idleThreshold = settings?.idle_threshold;
+  // const idleThreshold = settings?.idle_threshold;
+  const idleThreshold = 5;
   if (timeSinceLastAction > idleThreshold) {
     isIdle = true;
     const adjustedElapsed = Math.max(elapsedTime - timeSinceLastAction, 0);
@@ -121,24 +140,25 @@ async function storeElapsedTime(elapsedTime) {
 document.addEventListener("pointermove", monitorUserActions);
 document.addEventListener("keypress", monitorUserActions);
 
-let lastUserActionCall = 0;
 function monitorUserActions() {
   const idleThreshold = settings?.idleThreshold ?? 3000;
   const THROTTLE_MS = idleThreshold * 0.9;
   const now = Date.now();
-
-  if (now - lastUserActionCall < THROTTLE_MS) {
+  if (now - timeSinceLastAction < THROTTLE_MS) {
     return;
   }
+  console.log("monitoring");
 
-  lastUserActionCall = now;
-
-  if (!isIdle) {
-    timeSinceLastAction = 0;
+  timeSinceLastAction = -1;
+  if (isIdle) {
+    console.log("start");
+    isIdle = false;
+    start();
   }
 }
 
 async function pause(seconds) {
+  console.log("paws");
   stopwatchRunning = false;
 
   clearInterval(stopwatchInterval);

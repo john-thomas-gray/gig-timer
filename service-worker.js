@@ -4,8 +4,6 @@ import { formatDate, formatTitleAndEpisode } from "./normalization.js";
 
 const CONTINUE_PAGE = "__CONTINUE_PAGE__";
 
-let stopwatchRunning = false;
-
 const storageCache = { count: 0, urls: {}, projects: [] };
 let currentTabId = null;
 let currentUrl = null;
@@ -51,12 +49,32 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.url !== workplaceUrl) return;
   if (msg.action === "store-elapsed-time") storeWorkTime(msg.elapsedTime || 0);
 });
 
-let stopwatchInterval = null;
-let workTime = 0;
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.action === "get-stored-worktime") {
+    getCurrentWorktime().then(sendResponse);
+  }
+  return true;
+});
+
+async function getCurrentWorktime() {
+  console.log("getCurrentWorktime");
+  /* Fix storage cache so this actually works */
+  const currentProject = await getProjectById(
+    "High Potential: Season 2: Episode 9: Episode 9 (E0022)"
+  );
+  console.log(currentProject.title);
+
+  if (!currentProject) {
+    console.warn("Current project not found");
+    return;
+  }
+  const currentWorktime = currentProject.work_time || 0;
+
+  return currentWorktime;
+}
 
 async function getWorkplaceId() {
   try {
@@ -112,60 +130,22 @@ function setProjectUrl(id) {
 }
 
 function getProjectById(workplaceId) {
+  console.log(workplaceId);
   const projects = storageCache.projects;
   /* Bandaid making Id checking less strict
   project.id = "Betrayal: Secrets and Lies: Season 1: Episode 1: Episode 1 (E0001)"
   workplaceId = "Betrayal: Secrets and Lies: Season 1: Episode 1: Episode 1"
   */
   const currentProject = projects.find((p) => p.id.includes(workplaceId));
+  console.log(currentProject);
   if (currentProject) return currentProject;
 }
 
-function createStopwatch() {
-  if (tabId) currentTabId = tabId;
-  const currentProject = getProjectById(workplaceId);
-  if (!currentProject) {
-    console.warn("Current project not found");
-    return;
-  }
-  workTime = currentProject.work_time || 0;
-  clearInterval(stopwatchInterval);
-  chrome.tabs.sendMessage(currentTabId, {
-    action: "create-stopwatch",
-    workTime: workTime,
-  });
-}
-
-function pauseStopwatch() {
-  try {
-    if (!stopwatchRunning) return;
-
-    const projects = storageCache.projects;
-
-    const currentProject = getProjectById(workplaceId);
-
-    clearInterval(stopwatchInterval);
-    stopwatchInterval = null;
-    stopwatchRunning = false;
-
-    currentProject.work_time = workTime;
-
-    chrome.storage.sync.set({ projects }, () => {
-      console.log("Work time saved:", workTime);
-    });
-
-    updateDisplay();
-  } catch (error) {
-    console.error("Failed to pause stopwatch:", error);
-  }
-}
-
-function storeWorkTime(seconds) {
+function storeWorkTime(workTime) {
   try {
     const projects = storageCache.projects;
     const currentProject = getProjectById(workplaceId);
     if (!currentProject) return;
-    workTime = seconds;
 
     currentProject.work_time = workTime;
 
