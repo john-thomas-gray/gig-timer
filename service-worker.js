@@ -5,6 +5,7 @@ import { formatDate, formatTitleAndEpisode } from "./normalization.js";
 const CONTINUE_PAGE = "__CONTINUE_PAGE__";
 
 const storageCache = { count: 0, urls: {}, projects: [] };
+let currentProject = null;
 let currentTabId = null;
 let currentUrl = null;
 let workplaceId = null;
@@ -18,7 +19,24 @@ async function initStorageCache() {
   ]);
   Object.assign(storageCache, items);
 }
-initStorageCache();
+
+async function initCurrentProject() {
+  initStorageCache();
+
+  if (!workplaceId) {
+    workplaceId = await getWorkplaceId();
+  }
+
+  if (!workplaceId || workplaceId === CONTINUE_PAGE) {
+    currentProject = null;
+    return null;
+  }
+
+  currentProject = getProjectById(workplaceId || null);
+  return currentProject;
+}
+
+initCurrentProject();
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "sync") {
@@ -41,10 +59,12 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
   currentTabId = tabId;
   currentUrl = url;
 
+  injectBridge();
   if (assignmentsUrl && url.includes(assignmentsUrl)) {
     setUpAssignmentsPage();
   } else if (workplaceUrl && url.includes(workplaceUrl)) {
     await setUpWorkplacePage();
+    initStopwatch();
   }
 });
 
@@ -61,15 +81,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 async function getCurrentWorktime() {
   console.log("getCurrentWorktime");
-  /* Fix storage cache so this actually works */
-  const currentProject = await getProjectById(
-    "High Potential: Season 2: Episode 9: Episode 9 (E0022)"
-  );
-  console.log(currentProject.title);
 
   if (!currentProject) {
     console.warn("Current project not found");
-    return;
   }
   const currentWorktime = currentProject.work_time || 0;
 
@@ -108,10 +122,8 @@ async function setUpWorkplacePage() {
 
 function setProjectUrl(id) {
   try {
-    const p = getProjectById(id);
-
-    if (p.workplace_url) return;
-    p.workplace_url = currentUrl;
+    if (currentProject.workplace_url) return;
+    currentProject.workplace_url = currentUrl;
 
     const updatedProjects = storageCache.projects.map((project) => {
       if (project.id === id) {
@@ -121,7 +133,10 @@ function setProjectUrl(id) {
     });
 
     chrome.storage.sync.set({ projects: updatedProjects }, () => {
-      console.log(`Updated workplace_url for project ${p.id}:`, workplace_url);
+      console.log(
+        `Updated workplace_url for project ${currentProject.id}:`,
+        workplace_url
+      );
       storageCache.projects = updatedProjects;
     });
   } catch (e) {
@@ -144,8 +159,6 @@ function getProjectById(workplaceId) {
 function storeWorkTime(workTime) {
   try {
     const projects = storageCache.projects;
-    const currentProject = getProjectById(workplaceId);
-    if (!currentProject) return;
 
     currentProject.work_time = workTime;
 
@@ -154,6 +167,27 @@ function storeWorkTime(workTime) {
     });
   } catch (e) {
     console.error("Failed to set elapsed time:", e);
+  }
+}
+
+function initStopwatch() {
+  try {
+    chrome.tabs.sendMessage(currentTabId, {
+      action: "init-stopwatch",
+      source: "service-worker.js",
+    });
+  } catch (error) {
+    console.error("Failed to initiate stopwatch:", error);
+  }
+}
+function injectBridge() {
+  try {
+    chrome.tabs.sendMessage(currentTabId, {
+      action: "inject-bridge",
+      source: "service-worker.js",
+    });
+  } catch (error) {
+    console.error("Failed to inject bridge:", error);
   }
 }
 

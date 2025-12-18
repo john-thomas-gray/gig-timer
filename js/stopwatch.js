@@ -1,7 +1,5 @@
-injectBridge();
-
 /* Initialize self. Request existing workTime, await response. Start stopwatch. */
-
+let initiated = false;
 let stopwatchElement = null;
 let stopwatchInterval = null;
 let timeSinceLastAction = -1;
@@ -13,13 +11,25 @@ let lastStartCall = 0;
 let workplaceUrl;
 let settings;
 
+const stopwatchListener = chrome.runtime.onMessage.addListener(
+  (msg, sender, sendResponse) => {
+    if (msg.source === "service-worker.js" && msg.action === "init-stopwatch") {
+      console.log("bing!");
+      initStopwatch();
+    }
+  }
+);
+
 async function getStorage() {
   workplaceUrl = await getWorkplaceUrl();
   settings = await getSettings();
 }
 
-getStorage();
-start();
+async function initStopwatch() {
+  getStorage();
+  start();
+  initiated = true;
+}
 
 async function getWorkplaceUrl() {
   try {
@@ -141,6 +151,7 @@ document.addEventListener("pointermove", monitorUserActions);
 document.addEventListener("keypress", monitorUserActions);
 
 function monitorUserActions() {
+  if (!initiated) return;
   const idleThreshold = settings?.idleThreshold ?? 3000;
   const THROTTLE_MS = idleThreshold * 0.9;
   const now = Date.now();

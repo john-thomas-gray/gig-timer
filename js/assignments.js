@@ -1,4 +1,4 @@
-injectBridge();
+// injectBridge();
 
 const pending = new Map();
 
