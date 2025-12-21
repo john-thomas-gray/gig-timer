@@ -1,0 +1,9 @@
+.projectSelect {
+  width: 20px;
+  border: 1px solid blue;
+  color: blue;
+}
+
+body {
+  background-color: rgb(122, 155, 216);
+}

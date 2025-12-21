@@ -121,4 +121,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("Error saving project:", error);
     }
   });
+
+  const projectSelectDropdown = document.getElementById("projectSelect");
 });
