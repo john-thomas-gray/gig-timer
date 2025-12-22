@@ -76,6 +76,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "get-stored-worktime") {
     getCurrentWorktime().then(sendResponse);
   }
+  if (msg.action === "get-stored-projects") {
+    if (msg.source === "popup.js") {
+      storageCache.projects.then(sendResponse);
+    }
+  }
   return true;
 });
 

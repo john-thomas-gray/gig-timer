@@ -1,0 +1,15 @@
+body {
+  background-color: rgb(122, 155, 216);
+  width: 300px;
+  height: 450px;
+}
+
+main {
+  width: 300px;
+}
+
+.inputGroup {
+  display: flex;
+  justify-content: space-around;
+  gap: 10px;
+}

@@ -22,7 +22,8 @@
         "js/stopwatch.js",
         "js/assignments.js",
         "js/workplace.js",
-        "js/idle-overlay.js"
+        "js/idle-overlay.js",
+        "js/popup.js"
       ]
     }
   ],
