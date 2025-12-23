@@ -18,6 +18,7 @@
     {
       "matches": ["*://*/*"],
       "js": [
+        "constants.js",
         "bridge/inject-bridge.js",
         "js/stopwatch.js",
         "js/assignments.js",
