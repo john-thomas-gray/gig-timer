@@ -20,6 +20,7 @@ function generateId(title, episode) {
 
 async function init() {
   const existingProjects = await getStoredProjects();
+  console.log(existingProjects);
   await theRest(existingProjects);
 }
 
@@ -35,23 +36,32 @@ async function getStoredProjects() {
   });
 }
 
-async function theRest(projects) {
-  let formHeading = "New Project";
+const overrides = {
+  url: "URL",
+};
 
-  const projectTemplate = {
-    id: undefined,
-    client: undefined,
-    contractor: "Pixelogic Media",
-    date_assigned: undefined,
-    date_due: undefined,
+function formatFieldLabel(key) {
+  return key
+    .split("_")
+    .map(
+      (word) => overrides[word] ?? word.charAt(0).toUpperCase() + word.slice(1)
+    )
+    .join(" ");
+}
+
+async function theRest(projects) {
+  const formFields = {
     episode: undefined,
-    hourly_rate: undefined,
-    invoice_amount: undefined,
-    rate: 6,
-    runtime: undefined,
-    title: undefined,
     work_time: 0,
     workplace_url: "",
+    runtime: undefined,
+    rate: undefined,
+    hourly_rate: undefined,
+    invoice_amount: undefined,
+    date_due: undefined,
+    date_assigned: undefined,
+    contractor: "Pixelogic Media",
+    client: undefined,
   };
 
   const projectSelectDropdown = document.getElementById("projectSelect");
@@ -60,16 +70,12 @@ async function theRest(projects) {
   const projectForm = () => {
     const form = document.createElement("form");
     form.id = "projectForm";
-    form.class = "projectForm";
-
-    const h2 = document.createElement("h2");
-    h2.textContent = formHeading;
+    form.className = "projectForm";
 
     const fields = document.createElement("div");
     fields.id = "defaultFields";
-    fields.class = "defaultFields";
+    fields.className = "defaultFields";
 
-    form.appendChild(h2);
     form.appendChild(fields);
 
     return form;
@@ -80,21 +86,22 @@ async function theRest(projects) {
   projects.forEach((project) => {
     const option = document.createElement("option");
     const title = project.title;
+    const episode = project.episode;
     const idValue = project.id ?? generateId(title, project.episode);
     option.value = idValue;
-    option.textContent = title;
+    option.textContent = title.concat(" ", episode);
     console.log(option.value, option.textContent);
     projectSelectDropdown.appendChild(option);
   });
 
   const defaultFields = document.getElementById("defaultFields");
 
-  for (const key in projectTemplate) {
+  for (const key in formFields) {
     const wrapper = document.createElement("div");
-    wrapper.class = "input-group";
+    wrapper.className = "inputGroup";
 
     const label = document.createElement("label");
-    label.textContent = key;
+    label.textContent = formatFieldLabel(key);
 
     const input = document.createElement("input");
     input.type = "text";

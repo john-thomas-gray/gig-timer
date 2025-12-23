@@ -75,13 +75,15 @@ chrome.runtime.onMessage.addListener((msg) => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "get-stored-worktime") {
     getCurrentWorktime().then(sendResponse);
+    return true;
   }
-  if (msg.action === "get-stored-projects") {
-    if (msg.source === "popup.js") {
-      storageCache.projects.then(sendResponse);
-    }
+
+  if (msg.action === "get-stored-projects" && msg.source === "popup.js") {
+    const p = storageCache.projects;
+    console.log(p);
+    sendResponse(p);
+    return true;
   }
-  return true;
 });
 
 async function getCurrentWorktime() {

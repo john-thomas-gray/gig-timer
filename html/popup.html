@@ -9,18 +9,16 @@
   <body>
     <main>
       <h1>Gig Timer</h1>
-      <label for="project">Select Project</label>
-      <select
-        class="projectSelect"
-        id="projectSelect"
-        name="projectSelect"
-      ></select>
+      <label for="project">Select Gig</label>
+      <select class="projectSelect" id="projectSelect" name="projectSelect">
+        <option value="New Project">New Project</option>
+      </select>
       <form class="projectForm" id="projectForm">
-        <h2>New Project</h2>
+        <h2>New Gig</h2>
         <div class="defaultFields" id="defaultFields">
           <div class="inputGroup">
-            <label>Id</label>
-            <input type="text" name="idInput" />
+            <label>Title</label>
+            <input type="text" name="textInput" />
           </div>
         </div>
       </form>

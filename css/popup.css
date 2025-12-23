@@ -10,6 +10,11 @@ main {
 
 .inputGroup {
   display: flex;
-  justify-content: space-around;
-  gap: 10px;
+  justify-content: space-between;
+  margin-inline: 10px;
+  margin-bottom: 5px;
 }
+/*
+.projectSelect {
+  width: 200px;
+} */
