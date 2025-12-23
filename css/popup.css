@@ -1,11 +1,28 @@
 body {
   background-color: rgb(122, 155, 216);
   width: 300px;
-  height: 450px;
+  height: 100%;
+  margin: 10px;
 }
 
 main {
   width: 300px;
+}
+
+h1 {
+  margin-inline: 10px;
+}
+
+h2 {
+  margin-inline: 10px;
+}
+
+select {
+  margin-inline: 10px;
+  margin-bottom: 10px;
+  height: 40px;
+  width: 280px;
+  font-size: 18px;
 }
 
 .inputGroup {
