@@ -21,7 +21,7 @@ async function initStorageCache() {
 }
 
 async function initCurrentProject() {
-  await initStorageCache();
+  initStorageCache();
 
   if (!workplaceId) {
     workplaceId = await getWorkplaceId();
@@ -61,6 +61,7 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 
   injectBridge();
   if (assignmentsUrl && url.includes(assignmentsUrl)) {
+    console.log("On assignments");
     setUpAssignmentsPage();
   } else if (workplaceUrl && url.includes(workplaceUrl)) {
     await setUpWorkplacePage();
@@ -142,12 +143,12 @@ function setProjectUrl(id) {
     chrome.storage.sync.set({ projects: updatedProjects }, () => {
       console.log(
         `Updated workplace_url for project ${currentProject.id}:`,
-        currentProject.workplace_url
+        workplace_url
       );
       storageCache.projects = updatedProjects;
     });
-  } catch (error) {
-    console.error("Failed to set project URL:", error);
+  } catch (e) {
+    console.error("Failed to set project URL:", e);
   }
 }
 
@@ -172,8 +173,8 @@ function storeWorkTime(workTime) {
     chrome.storage.sync.set({ projects }, () => {
       console.log("Work time saved:", workTime);
     });
-  } catch (error) {
-    console.error("Failed to set elapsed time:", error);
+  } catch (e) {
+    console.error("Failed to set elapsed time:", e);
   }
 }
 
@@ -219,8 +220,8 @@ async function setUpAssignmentsPage() {
     if (response.type === "RETURN_W2UI_DATA") {
       handleAssignmentSnapshot(response.payload.snapshot);
     }
-  } catch (error) {
-    console.warn("Failed to send message:", error);
+  } catch (e) {
+    console.warn("Failed to send message:", e);
     return;
   }
 }
@@ -264,7 +265,7 @@ async function handleAssignmentSnapshot(snapshot) {
     chrome.storage.sync.set({ projects: mergedProjects }, () => {
       console.log("Projects saved:", mergedProjects);
     });
-  } catch (error) {
+  } catch (e) {
     console.error("Failed to handle assignment snapshot:", error);
   }
 }
@@ -293,8 +294,8 @@ function getProjectData(object) {
       if (formattedKey === "date_due" || formattedKey === "date_assigned") {
         try {
           value = formatDate(value);
-        } catch (error) {
-          console.error("Failed to format date:", error);
+        } catch (e) {
+          console.error("Failed to format date:", e);
         }
       } else if (formattedKey === "title") {
         try {
@@ -302,8 +303,8 @@ function getProjectData(object) {
           value = values.title;
           newProjectData["episode"] = values.episode;
           newProjectData["id"] = object["title"];
-        } catch (error) {
-          console.error("Failed to format title or episode:", error);
+        } catch (e) {
+          console.error("Failed to format title or episode:", e);
         }
       }
 
