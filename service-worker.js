@@ -61,6 +61,7 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 
   injectBridge();
   if (assignmentsUrl && url.includes(assignmentsUrl)) {
+    console.log("On assignments");
     setUpAssignmentsPage();
   } else if (workplaceUrl && url.includes(workplaceUrl)) {
     await setUpWorkplacePage();
