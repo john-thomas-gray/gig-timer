@@ -1,5 +1,3 @@
-// injectBridge();
-
 const pending = new Map();
 
 const runtimeMessageListener = (msg, sender, sendResponse) => {
@@ -7,7 +5,7 @@ const runtimeMessageListener = (msg, sender, sendResponse) => {
 
   const id = crypto.randomUUID();
   pending.set(id, sendResponse);
-
+  console.log("requestdata");
   window.postMessage(
     { source: "assignments.js", type: "REQUEST_W2UI_DATA", id },
     "*"

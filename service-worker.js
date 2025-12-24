@@ -21,7 +21,7 @@ async function initStorageCache() {
 }
 
 async function initCurrentProject() {
-  initStorageCache();
+  await initStorageCache();
 
   if (!workplaceId) {
     workplaceId = await getWorkplaceId();
@@ -142,12 +142,12 @@ function setProjectUrl(id) {
     chrome.storage.sync.set({ projects: updatedProjects }, () => {
       console.log(
         `Updated workplace_url for project ${currentProject.id}:`,
-        workplace_url
+        currentProject.workplace_url
       );
       storageCache.projects = updatedProjects;
     });
-  } catch (e) {
-    console.error("Failed to set project URL:", e);
+  } catch (error) {
+    console.error("Failed to set project URL:", error);
   }
 }
 
@@ -172,8 +172,8 @@ function storeWorkTime(workTime) {
     chrome.storage.sync.set({ projects }, () => {
       console.log("Work time saved:", workTime);
     });
-  } catch (e) {
-    console.error("Failed to set elapsed time:", e);
+  } catch (error) {
+    console.error("Failed to set elapsed time:", error);
   }
 }
 
@@ -219,8 +219,8 @@ async function setUpAssignmentsPage() {
     if (response.type === "RETURN_W2UI_DATA") {
       handleAssignmentSnapshot(response.payload.snapshot);
     }
-  } catch (e) {
-    console.warn("Failed to send message:", e);
+  } catch (error) {
+    console.warn("Failed to send message:", error);
     return;
   }
 }
@@ -264,7 +264,7 @@ async function handleAssignmentSnapshot(snapshot) {
     chrome.storage.sync.set({ projects: mergedProjects }, () => {
       console.log("Projects saved:", mergedProjects);
     });
-  } catch (e) {
+  } catch (error) {
     console.error("Failed to handle assignment snapshot:", error);
   }
 }
@@ -293,8 +293,8 @@ function getProjectData(object) {
       if (formattedKey === "date_due" || formattedKey === "date_assigned") {
         try {
           value = formatDate(value);
-        } catch (e) {
-          console.error("Failed to format date:", e);
+        } catch (error) {
+          console.error("Failed to format date:", error);
         }
       } else if (formattedKey === "title") {
         try {
@@ -302,8 +302,8 @@ function getProjectData(object) {
           value = values.title;
           newProjectData["episode"] = values.episode;
           newProjectData["id"] = object["title"];
-        } catch (e) {
-          console.error("Failed to format title or episode:", e);
+        } catch (error) {
+          console.error("Failed to format title or episode:", error);
         }
       }
 
