@@ -5,8 +5,5 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-}
-
-body {
-  background-color: #000000;
+  background-color: rgba(0, 0, 0, 0.1) 2;
 }
