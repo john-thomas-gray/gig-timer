@@ -1,17 +1,17 @@
-document
-  .getElementById("projectSelect")
-  .addEventListener("change", onSelectChange);
-
 document.addEventListener("DOMContentLoaded", () => {
   init();
 });
 
 let existingProjects = [];
-let selectedProject = {};
+let selectedProject = null;
+let defaultFields;
 
 async function init() {
   existingProjects = await getStoredProjects();
-  await theRest(existingProjects);
+  await buildUI(existingProjects);
+  document
+    .getElementById("projectSelect")
+    .addEventListener("change", onSelectChange);
 }
 
 async function getStoredProjects() {
@@ -26,62 +26,54 @@ async function getStoredProjects() {
   });
 }
 
-async function theRest(projects) {
-  const formFields = {
-    episode: undefined,
-    work_time: 0,
-    workplace_url: "",
-    runtime: undefined,
-    rate: undefined,
-    hourly_rate: undefined,
-    invoice_amount: undefined,
-    date_due: undefined,
-    date_assigned: undefined,
-    contractor: "Pixelogic Media",
-    client: undefined,
-  };
+async function buildUI(projects) {
+  defaultFields = document.getElementById("defaultFields");
+  if (defaultFields.children.length > 1) return;
+  buildProjectOptions(projects);
+  buildFormInputs();
+}
 
-  const main = document.querySelector("main");
+function buildProjectOptions(projects) {
+  const projectSelect = document.getElementById("projectSelect");
 
-  const projectSelectDropdown = document.getElementById("projectSelect");
-
-  const projectForm = () => {
-    const form = document.createElement("form");
-    form.id = "projectForm";
-    form.className = "projectForm";
-
-    const fields = document.createElement("div");
-    fields.id = "defaultFields";
-    fields.className = "defaultFields";
-
-    form.appendChild(fields);
-
-    return form;
-  };
-
-  main.appendChild(projectForm());
-
-  let currentOptgroup = null;
-  let lastTitle = "";
+  const optgroups = {};
 
   projects.forEach((project) => {
-    if (project.title !== lastTitle) {
-      currentOptgroup = document.createElement("optgroup");
-      currentOptgroup.label = project.title;
-      projectSelectDropdown.appendChild(currentOptgroup);
-      lastTitle = project.title;
+    const title = project.title || "Untitled";
+
+    if (!optgroups[title]) {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = title;
+      projectSelect.appendChild(optgroup);
+      optgroups[title] = optgroup;
     }
 
     const option = document.createElement("option");
     option.value = project.id ?? generateId(project.title, project.episode);
-    option.textContent = project.episode;
+    option.textContent = project.episode || "Unknown";
 
-    currentOptgroup.appendChild(option);
+    optgroups[title].appendChild(option);
   });
+}
 
+function buildFormInputs() {
   const defaultFields = document.getElementById("defaultFields");
 
-  for (const key in formFields) {
+  const formSchema = {
+    episode: "text",
+    work_time: "text",
+    workplace_url: "text",
+    runtime: "text",
+    rate: "text",
+    hourly_rate: "text",
+    invoice_amount: "text",
+    date_due: "text",
+    date_assigned: "text",
+    contractor: "text",
+    client: "text",
+  };
+
+  for (const key in formSchema) {
     const wrapper = document.createElement("div");
     wrapper.className = "inputGroup";
 
@@ -89,13 +81,27 @@ async function theRest(projects) {
     label.textContent = formatFieldLabel(key);
 
     const input = document.createElement("input");
-    input.type = "text";
+    input.type = formSchema[key];
     input.name = key;
+    input.value = "";
 
     wrapper.appendChild(label);
     wrapper.appendChild(input);
     defaultFields.appendChild(wrapper);
   }
+}
+
+function onSelectChange() {
+  const select = document.getElementById("projectSelect");
+  const projectId = select.value;
+
+  selectedProject =
+    existingProjects.find((project) => project.id === projectId) ?? null;
+
+  const h2 = document.getElementById("h2");
+  h2.textContent = selectedProject ? selectedProject.title : "";
+
+  setFormText();
 }
 
 function generateId(title, episode) {
@@ -115,9 +121,8 @@ function generateId(title, episode) {
 }
 
 function formatFieldLabel(key) {
-  const overrides = {
-    url: "URL",
-  };
+  const overrides = { url: "URL" };
+
   return key
     .split("_")
     .map(
@@ -126,21 +131,114 @@ function formatFieldLabel(key) {
     .join(" ");
 }
 
-function onSelectChange() {
-  if (!Array.isArray(existingProjects)) {
-    throw new Error("existingProjects is not defined or not an array");
+function roundTo(num, precision) {
+  const factor = Math.pow(10, precision);
+  return Math.round(num * factor + Number.EPSILON) / factor;
+}
+
+function setFormText() {
+  if (!defaultFields) return;
+
+  if (!selectedProject) {
+    for (const group of defaultFields.children) {
+      const input = group.querySelector("input");
+      if (input) input.value = "";
+    }
+    return;
   }
 
-  const select = document.getElementById("projectSelect");
-  const projectId = select.value;
+  for (const inputGroup of defaultFields.children) {
+    const input = inputGroup.querySelector("input");
+    if (!input) continue;
 
-  const project = existingProjects.find((project) => project.id === projectId);
+    if (!selectedProject) {
+      input.value = "";
+      continue;
+    }
+    const key = input.name;
+    let value = selectedProject[key];
 
-  if (project) {
-    selectedProject = project;
-    const h2 = document.getElementById("h2");
-    h2.textContent = selectedProject.title;
-  } else {
-    selectedProject = null;
+    value = formatDisplayOptions(key, value);
+
+    input.value = value ?? "";
   }
+}
+
+function formatDisplayOptions(key, value) {
+  let formattedValue = "";
+  const rate = selectedProject["rate"];
+  const runtime = selectedProject["runtime"];
+  const workTime = selectedProject["work_time"];
+  const invoiceAmount = selectedProject["invoice_amount"];
+
+  switch (key) {
+    case "work_time":
+      formattedValue = displayFormatTime(value);
+      break;
+    case "runtime":
+      formattedValue = displayFormatTime(value);
+      break;
+    case "rate":
+      formattedValue = displayFormatRatePpm(value);
+      break;
+    case "hourly_rate":
+      formattedValue = displayFormatHourlyRate(invoiceAmount, workTime);
+      break;
+    case "invoice_amount":
+      formattedValue = displayFormatInvoiceAmount(rate, runtime);
+      break;
+    case "date_due":
+      formattedValue = displayFormatDate(value);
+      break;
+    case "date_assigned":
+      formattedValue = displayFormatDate(value);
+      break;
+    default:
+      formattedValue = value;
+  }
+
+  return formattedValue;
+}
+
+function displayFormatTime(seconds) {
+  const hrs = Math.floor(seconds / 3600)
+    .toString()
+    .padStart(2, "0");
+  const mins = Math.floor((seconds % 3600) / 60)
+    .toString()
+    .padStart(2, "0");
+  const secs = (seconds % 60).toString().padStart(2, "0");
+  return `${hrs}:${mins}:${secs}`;
+}
+
+function displayFormatUSD(dollars) {
+  if (dollars == null || isNaN(dollars)) return "";
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(dollars));
+}
+
+function displayFormatDate(dateString) {
+  return Date(dateString);
+}
+
+function displayFormatHourlyRate(invoiceAmount, workTime) {
+  const hourlyRate = roundTo(invoiceAmount / Number(workTime) / 3600, 2);
+  const hrRateUSD = displayFormatUSD(hourlyRate);
+  return `${hourlyRate}/hr`;
+}
+
+function displayFormatInvoiceAmount(rate, runtime) {
+  const runtimeM = Math.round(Number(selectedProject["runtime"]) / 60);
+  const invoiceAmount = Number(rate) * runtimeM;
+  return displayFormatUSD(invoiceAmount);
+}
+
+function displayFormatRatePpm(rate) {
+  let formatted = displayFormatUSD(rate);
+  return `${formatted} ppm`;
 }

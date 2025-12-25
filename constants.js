@@ -1,15 +1,17 @@
 export const projectTemplate = {
-  id: undefined,
-  client: undefined,
+  id: "",
+  client: "",
   contractor: "Pixelogic Media",
-  date_assigned: undefined,
-  date_due: undefined,
-  episode: undefined,
-  hourly_rate: undefined,
-  invoice_amount: undefined,
+  date_assigned: "",
+  date_due: "",
+  episode: "",
+  hourly_rate: 0,
+  invoice_amount: 0,
   rate: 6,
-  runtime: undefined,
-  title: undefined,
+  runtime: "",
+  title: "",
   work_time: 0,
   workplace_url: "",
 };
+
+// window.bingus = "bongus";

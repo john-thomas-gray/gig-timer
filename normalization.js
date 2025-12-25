@@ -33,3 +33,31 @@ export function formatDate(dateString) {
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+function displayFormatUSD(dollars) {
+  if (dollars == null || isNaN(dollars)) return "";
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(dollars));
+}
+
+function displayFormatHourlyRate(invoiceAmount, workTime) {
+  const hourlyRate = roundTo(invoiceAmount / Number(workTime) / 3600, 2);
+  const hrRateUSD = displayFormatUSD(hourlyRate);
+  return `${hourlyRate}/hr`;
+}
+
+function displayFormatInvoiceAmount(rate, runtime) {
+  const runtimeM = Math.round(Number(selectedProject["runtime"]) / 60);
+  const invoiceAmount = Number(rate) * runtimeM;
+  return displayFormatUSD(invoiceAmount);
+}
+
+function displayFormatRatePpm(rate) {
+  let formatted = displayFormatUSD(rate);
+  return `${formatted} ppm`;
+}
