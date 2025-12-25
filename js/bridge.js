@@ -56,7 +56,7 @@
     };
   };
 
-  const MAX_ATTEMPTS = 1;
+  const MAX_ATTEMPTS = 500;
   const ATTEMPT_DELAY_MS = 500;
 
   // Define the listener once
@@ -85,6 +85,7 @@
                 reason: "Grid not ready",
                 state: describeCurrentState(),
               },
+              id: event.data.id,
             },
             "*"
           );
@@ -102,12 +103,12 @@
           recordCount: grid.records.length,
         },
       };
-
       window.postMessage(
         {
           source: "bridge.js",
           type: "RETURN_W2UI_DATA",
           payload: { snapshot },
+          id: event.data.id,
         },
         "*"
       );

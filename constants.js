@@ -14,4 +14,4 @@ export const projectTemplate = {
   workplace_url: "",
 };
 
-window.bingus = "bongus";
+// window.bingus = "bongus";

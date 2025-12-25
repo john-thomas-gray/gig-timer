@@ -1,29 +1,36 @@
 const pending = new Map();
 
-const runtimeMessageListener = (msg, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action !== "request-assignments-data") return;
 
   const id = crypto.randomUUID();
+
   pending.set(id, sendResponse);
-  console.log("requestdata");
+
   window.postMessage(
     { source: "assignments.js", type: "REQUEST_W2UI_DATA", id },
     "*"
   );
 
   return true;
-};
+});
 
-const bridgeMessageListener = (event) => {
-  if (event.data.source !== "bridge.js") return;
+window.addEventListener("message", (event) => {
+  if (event.data?.source !== "bridge.js") return;
 
-  const sendResponse = pending.get(event.data.id);
-  if (!sendResponse) return;
+  const { id, type, payload } = event.data;
 
-  sendResponse({
-    type: event.data.type,
-    payload: event.data.payload,
-  });
+  if (!id) {
+    console.warn("Bridge response missing id:", event.data);
+    return;
+  }
 
-  pending.delete(event.data.id);
-};
+  const sendResponse = pending.get(id);
+  if (!sendResponse) {
+    console.warn("No pending request for id:", id);
+    return;
+  }
+
+  sendResponse({ type, payload });
+  pending.delete(id);
+});

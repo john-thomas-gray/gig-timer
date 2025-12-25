@@ -8,98 +8,106 @@ const storageCache = { count: 0, urls: {}, projects: [] };
 let currentProject = null;
 let currentTabId = null;
 let currentUrl = null;
-let workplaceId = null;
 
 async function initStorageCache() {
-  const items = await chrome.storage.sync.get([
-    "count",
-    "lastTabId",
-    "urls",
-    "projects",
-  ]);
+  const items = await chrome.storage.sync.get(["count", "urls", "projects"]);
   Object.assign(storageCache, items);
 }
 
 async function initCurrentProject() {
-  initStorageCache();
+  await initStorageCache();
+  addListeners();
 
-  if (!workplaceId) {
-    workplaceId = await getWorkplaceId();
-  }
+  const activeId = storageCache.lastProjectId;
+  if (!activeId) return null;
 
-  if (!workplaceId || workplaceId === CONTINUE_PAGE) {
-    currentProject = null;
-    return null;
-  }
+  currentProject = getProjectById(activeId);
 
-  currentProject = getProjectById(workplaceId || null);
   return currentProject;
 }
 
 initCurrentProject();
 
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "sync") {
-    for (const key in changes) {
-      if (storageCache.hasOwnProperty(key)) {
-        storageCache[key] = changes[key].newValue;
-        console.log(`Updated storageCache.${key}:`, storageCache[key]);
+function addListeners() {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "sync") {
+      for (const key in changes) {
+        if (storageCache.hasOwnProperty(key)) {
+          storageCache[key] = changes[key].newValue;
+          console.log(`Updated storageCache.${key}:`, storageCache[key]);
+        }
       }
     }
-  }
-});
+  });
 
-chrome.webNavigation.onCompleted.addListener(async (details) => {
-  const { frameId, tabId, url } = details;
-  if (frameId !== 0) return;
+  const onCompleteTimers = new Map();
+  const DEBOUNCE_MS = 300;
 
-  const { assignments: assignmentsUrl, workplace: workplaceUrl } =
-    storageCache.urls;
+  chrome.webNavigation.onCompleted.addListener(({ frameId, tabId, url }) => {
+    if (frameId !== 0) return;
 
-  currentTabId = tabId;
-  currentUrl = url;
+    clearTimeout(onCompleteTimers.get(tabId));
 
-  injectBridge();
-  if (assignmentsUrl && url.includes(assignmentsUrl)) {
-    console.log("On assignments");
-    setUpAssignmentsPage();
-  } else if (workplaceUrl && url.includes(workplaceUrl)) {
-    await setUpWorkplacePage();
-    initStopwatch();
-  }
-});
+    const timer = setTimeout(async () => {
+      onCompleteTimers.delete(tabId);
 
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.action === "store-elapsed-time") storeWorkTime(msg.elapsedTime || 0);
-});
+      currentTabId = tabId;
+      currentUrl = url;
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action === "get-stored-worktime") {
-    getCurrentWorktime().then(sendResponse);
-    return true;
-  }
+      const { assignments, workplace } = storageCache.urls;
 
-  if (msg.action === "get-stored-projects" && msg.source === "popup.js") {
-    const p = storageCache.projects;
-    console.log(p);
-    sendResponse(p);
-    return true;
-  }
-});
+      if (assignments && url.includes(assignments)) {
+        await setUpAssignmentsPage();
+      }
 
-async function getCurrentWorktime() {
+      if (workplace && url.includes(workplace)) {
+        const id = await getWorkplaceId();
+        const project = getProjectById(id);
+
+        if (project) {
+          currentProject = project;
+          chrome.storage.sync.set({ lastProjectId: project.id });
+          await setUpWorkplacePage(project.id);
+          initStopwatch();
+        }
+      }
+    }, DEBOUNCE_MS);
+
+    onCompleteTimers.set(tabId, timer);
+  });
+
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.action === "store-elapsed-time") {
+      storeWorkTime(msg.elapsedTime || 0);
+      return;
+    }
+
+    if (msg.action === "get-stored-worktime") {
+      sendResponse(getCurrentWorktime());
+      return;
+    }
+
+    if (msg.action === "get-stored-projects" && msg.source === "popup.js") {
+      sendResponse(storageCache.projects);
+      return;
+    }
+
+    runtimeMessageListener(msg, sender, sendResponse);
+  });
+}
+
+function getCurrentWorktime() {
   console.log("getCurrentWorktime");
 
   if (!currentProject) {
     console.warn("Current project not found");
   }
-  const currentWorktime = currentProject.work_time || 0;
-
-  return currentWorktime;
+  return currentProject?.work_time ?? 0;
 }
 
 async function getWorkplaceId() {
   try {
+    if (!currentTabId) return null;
     const response = await chrome.tabs.sendMessage(currentTabId, {
       action: "request-workplace-id",
       source: "service-worker.js",
@@ -114,23 +122,15 @@ async function getWorkplaceId() {
   }
 }
 
-async function setUpWorkplacePage() {
-  try {
-    workplaceId = await getWorkplaceId();
-
-    if (workplaceId === CONTINUE_PAGE) {
-      console.log("Skipping setup for continue page");
-      return;
-    }
-    setProjectUrl(workplaceId);
-  } catch (error) {
-    console.error("Failed to set up workplace page:", error);
-  }
+async function setUpWorkplacePage(id) {
+  if (!id || id === CONTINUE_PAGE) return;
+  setProjectUrl(id);
 }
 
 function setProjectUrl(id) {
   try {
-    if (currentProject.workplace_url) return;
+    if (!currentProject || currentProject.workplace_url) return;
+
     currentProject.workplace_url = currentUrl;
 
     const updatedProjects = storageCache.projects.map((project) => {
@@ -143,7 +143,7 @@ function setProjectUrl(id) {
     chrome.storage.sync.set({ projects: updatedProjects }, () => {
       console.log(
         `Updated workplace_url for project ${currentProject.id}:`,
-        workplace_url
+        currentProject.workplace_url
       );
       storageCache.projects = updatedProjects;
     });
@@ -159,15 +159,16 @@ function getProjectById(workplaceId) {
   project.id = "Betrayal: Secrets and Lies: Season 1: Episode 1: Episode 1 (E0001)"
   workplaceId = "Betrayal: Secrets and Lies: Season 1: Episode 1: Episode 1"
   */
-  const currentProject = projects.find((p) => p.id.includes(workplaceId));
-  console.log(currentProject);
-  if (currentProject) return currentProject;
+  const project = projects.find((p) => p.id.includes(workplaceId));
+  console.log(project);
+  if (project) return project;
 }
 
 function storeWorkTime(workTime) {
   try {
     const projects = storageCache.projects;
 
+    if (!currentProject) return;
     currentProject.work_time = workTime;
 
     chrome.storage.sync.set({ projects }, () => {
@@ -179,6 +180,7 @@ function storeWorkTime(workTime) {
 }
 
 function initStopwatch() {
+  console.log("initstopwatch");
   try {
     chrome.tabs.sendMessage(currentTabId, {
       action: "init-stopwatch",
@@ -186,16 +188,6 @@ function initStopwatch() {
     });
   } catch (error) {
     console.error("Failed to initiate stopwatch:", error);
-  }
-}
-function injectBridge() {
-  try {
-    chrome.tabs.sendMessage(currentTabId, {
-      action: "inject-bridge",
-      source: "service-worker.js",
-    });
-  } catch (error) {
-    console.error("Failed to inject bridge:", error);
   }
 }
 
@@ -226,7 +218,7 @@ async function setUpAssignmentsPage() {
   }
 }
 
-async function handleAssignmentSnapshot(snapshot) {
+function handleAssignmentSnapshot(snapshot) {
   try {
     const w2uiData = snapshot.records;
 
@@ -236,7 +228,7 @@ async function handleAssignmentSnapshot(snapshot) {
 
     const existingProjects = storageCache.projects || [];
 
-    const newProjectArray = await parseW2uiData(w2uiData);
+    const newProjectArray = parseW2uiData(w2uiData);
 
     const projectMap = new Map();
     existingProjects.forEach((p) => {
@@ -265,14 +257,14 @@ async function handleAssignmentSnapshot(snapshot) {
     chrome.storage.sync.set({ projects: mergedProjects }, () => {
       console.log("Projects saved:", mergedProjects);
     });
-  } catch (e) {
+  } catch (error) {
     console.error("Failed to handle assignment snapshot:", error);
   }
 }
 
 // W2UI Data Parsing
 
-async function parseW2uiData(w2uiArray) {
+function parseW2uiData(w2uiArray) {
   return w2uiArray.map(getProjectData);
 }
 

@@ -9,12 +9,4 @@ function injectBridge() {
   }
 }
 
-// window.injectBridge = injectBridge;
-
-const injectBridgeListener = chrome.runtime.onMessage.addListener(
-  (msg, sender, sendResponse) => {
-    if (msg.source === "service-worker.js" && msg.action === "inject-bridge") {
-      injectBridge();
-    }
-  }
-);
+injectBridge();

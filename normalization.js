@@ -56,3 +56,8 @@ function displayFormatInvoiceAmount(rate, runtime) {
   const invoiceAmount = Number(rate) * runtimeM;
   return displayFormatUSD(invoiceAmount);
 }
+
+function displayFormatRatePpm(rate) {
+  let formatted = displayFormatUSD(rate);
+  return `${formatted} ppm`;
+}

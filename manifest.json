@@ -1,12 +1,12 @@
 {
-  "name": "Work Timer",
-  "description": "Work Timer quantifies project time data.",
+  "name": "Gig Timer",
+  "description": "Gig Timer tracks how long each contract takes.",
   "version": "1.0",
   "manifest_version": 3,
   "options_page": "html/options.html",
   "action": {
     "default_popup": "html/popup.html",
-    "default_title": "Work Timer"
+    "default_title": "Gig Timer"
   },
   "host_permissions": ["*://*/*"],
   "permissions": ["storage", "tabs", "activeTab", "webNavigation"],

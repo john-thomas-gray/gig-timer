@@ -11,14 +11,12 @@ let lastStartCall = 0;
 let workplaceUrl;
 let settings;
 
-const stopwatchListener = chrome.runtime.onMessage.addListener(
-  (msg, sender, sendResponse) => {
-    if (msg.source === "service-worker.js" && msg.action === "init-stopwatch") {
-      console.log("bing!");
-      initStopwatch();
-    }
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.source === "service-worker.js" && msg.action === "init-stopwatch") {
+    console.log("bing!");
+    initStopwatch();
   }
-);
+});
 
 async function getStorage() {
   workplaceUrl = await getWorkplaceUrl();

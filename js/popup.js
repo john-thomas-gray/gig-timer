@@ -36,22 +36,23 @@ async function buildUI(projects) {
 function buildProjectOptions(projects) {
   const projectSelect = document.getElementById("projectSelect");
 
-  let currentOptgroup = null;
-  let lastTitle = "";
+  const optgroups = {};
 
   projects.forEach((project) => {
-    if (project.title !== lastTitle) {
-      currentOptgroup = document.createElement("optgroup");
-      currentOptgroup.label = project.title;
-      projectSelect.appendChild(currentOptgroup);
-      lastTitle = project.title;
+    const title = project.title || "Untitled";
+
+    if (!optgroups[title]) {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = title;
+      projectSelect.appendChild(optgroup);
+      optgroups[title] = optgroup;
     }
 
     const option = document.createElement("option");
     option.value = project.id ?? generateId(project.title, project.episode);
-    option.textContent = project.episode;
+    option.textContent = project.episode || "Unknown";
 
-    currentOptgroup.appendChild(option);
+    optgroups[title].appendChild(option);
   });
 }
 
@@ -168,6 +169,7 @@ function formatDisplayOptions(key, value) {
   const rate = selectedProject["rate"];
   const runtime = selectedProject["runtime"];
   const workTime = selectedProject["work_time"];
+  const invoiceAmount = selectedProject["invoice_amount"];
 
   switch (key) {
     case "work_time":
@@ -177,10 +179,10 @@ function formatDisplayOptions(key, value) {
       formattedValue = displayFormatTime(value);
       break;
     case "rate":
-      formattedValue = selectedProject["rate"];
+      formattedValue = displayFormatRatePpm(value);
       break;
     case "hourly_rate":
-      formattedValue = displayFormatHourlyRate(value, workTime);
+      formattedValue = displayFormatHourlyRate(invoiceAmount, workTime);
       break;
     case "invoice_amount":
       formattedValue = displayFormatInvoiceAmount(rate, runtime);
@@ -234,4 +236,9 @@ function displayFormatInvoiceAmount(rate, runtime) {
   const runtimeM = Math.round(Number(selectedProject["runtime"]) / 60);
   const invoiceAmount = Number(rate) * runtimeM;
   return displayFormatUSD(invoiceAmount);
+}
+
+function displayFormatRatePpm(rate) {
+  let formatted = displayFormatUSD(rate);
+  return `${formatted} ppm`;
 }
