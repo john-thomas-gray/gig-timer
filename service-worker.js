@@ -220,6 +220,7 @@ async function setUpAssignmentsPage() {
 
 function handleAssignmentSnapshot(snapshot) {
   try {
+    /* Parse w2ui */
     const w2uiData = snapshot.records;
 
     if (!Array.isArray(w2uiData)) {
@@ -229,6 +230,8 @@ function handleAssignmentSnapshot(snapshot) {
     const existingProjects = storageCache.projects || [];
 
     const newProjectArray = parseW2uiData(w2uiData);
+
+    /* Merge new and existing projects */
 
     const projectMap = new Map();
     existingProjects.forEach((p) => {
@@ -251,6 +254,8 @@ function handleAssignmentSnapshot(snapshot) {
       projectMap.set(p.id, merged);
     });
 
+    /* Store projects */
+
     const mergedProjects = Array.from(projectMap.values());
     storageCache.projects = mergedProjects;
 
@@ -265,7 +270,7 @@ function handleAssignmentSnapshot(snapshot) {
 // W2UI Data Parsing
 
 function parseW2uiData(w2uiArray) {
-  return w2uiArray.map(getProjectData);
+  return w2uiArray.map(formatProjectData);
 }
 
 const w2ToProjectMap = {
@@ -275,13 +280,15 @@ const w2ToProjectMap = {
   title: "title",
 };
 
-function getProjectData(object) {
+function formatProjectData(object) {
   const newProjectData = {};
-
+  console.log("runs");
   Object.keys(object).forEach((key) => {
     if (key in w2ToProjectMap) {
       const formattedKey = w2ToProjectMap[key];
       let value = object[key];
+      console.log("key", key, "value", value);
+      /* Format project data */
 
       if (formattedKey === "date_due" || formattedKey === "date_assigned") {
         try {
@@ -310,5 +317,3 @@ function getProjectData(object) {
 
   return newProjectData;
 }
-
-/* Add the inject-bridge calls here. Need to be able to check that we are on the right dynamic url */
