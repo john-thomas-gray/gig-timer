@@ -229,7 +229,7 @@ function displayFormatDate(dateString) {
 function displayFormatHourlyRate(invoiceAmount, workTime) {
   const hourlyRate = roundTo(invoiceAmount / Number(workTime) / 3600, 2);
   const hrRateUSD = displayFormatUSD(hourlyRate);
-  return `${hourlyRate}/hr`;
+  return `${hrRateUSD}/hr`;
 }
 
 function displayFormatInvoiceAmount(rate, runtime) {
