@@ -1,6 +1,6 @@
 "use strict";
 import { projectTemplate } from "./constants.js";
-import { formatDate, formatTitleAndEpisode } from "./normalization.js";
+import { formatProjectData } from "./normalization.js";
 
 const CONTINUE_PAGE = "__CONTINUE_PAGE__";
 
@@ -220,100 +220,80 @@ async function setUpAssignmentsPage() {
 
 function handleAssignmentSnapshot(snapshot) {
   try {
-    /* Parse w2ui */
-    const w2uiData = snapshot.records;
+    const w2uiData = parseSnapshot(snapshot);
+    const newProjects = parseW2uiData(w2uiData);
+    const mergedProjects = mergeProjects(
+      storageCache.projects || [],
+      newProjects
+    );
+    const formattedProjects = mergedProjects.map((project) =>
+      formatProjectData(project)
+    );
 
-    if (!Array.isArray(w2uiData)) {
-      throw new Error("Invalid data shape");
-    }
-
-    const existingProjects = storageCache.projects || [];
-
-    const newProjectArray = parseW2uiData(w2uiData);
-
-    /* Merge new and existing projects */
-
-    const projectMap = new Map();
-    existingProjects.forEach((p) => {
-      const id = p.id;
-      projectMap.set(id, p);
-    });
-
-    newProjectArray.forEach((p) => {
-      const existing = projectMap.get(p.id) || {};
-      const merged = {};
-
-      Object.keys(projectTemplate).forEach((key) => {
-        if (key in p) {
-          merged[key] = p[key];
-        } else if (key in existing) merged[key] = existing[key];
-        else merged[key] = projectTemplate[key];
-      });
-
-      merged.id = p.id;
-      projectMap.set(p.id, merged);
-    });
-
-    /* Store projects */
-
-    const mergedProjects = Array.from(projectMap.values());
-    storageCache.projects = mergedProjects;
-
-    chrome.storage.sync.set({ projects: mergedProjects }, () => {
-      console.log("Projects saved:", mergedProjects);
-    });
+    storeProjects(formattedProjects);
   } catch (error) {
     console.error("Failed to handle assignment snapshot:", error);
   }
 }
 
-// W2UI Data Parsing
+function parseSnapshot(snapshot) {
+  const w2uiData = snapshot.records;
 
-function parseW2uiData(w2uiArray) {
-  return w2uiArray.map(formatProjectData);
+  if (!Array.isArray(w2uiData)) {
+    throw new Error("Invalid data shape");
+  }
+
+  return w2uiData;
 }
 
-const w2ToProjectMap = {
-  alpha_clients: "client",
-  created_at: "date_assigned",
-  due_date: "date_due",
-  title: "title",
-};
+function parseW2uiData(w2uiArray) {
+  const w2ToProjectMap = {
+    alpha_clients: "client",
+    created_at: "date_assigned",
+    due_date: "date_due",
+    title: "title",
+  };
 
-function formatProjectData(object) {
-  const newProjectData = {};
-  console.log("runs");
-  Object.keys(object).forEach((key) => {
-    if (key in w2ToProjectMap) {
+  return w2uiArray.map((object) => {
+    const projectWithConvertedKeys = {};
+
+    Object.keys(object).forEach((key) => {
+      if (!(key in w2ToProjectMap)) return;
+
       const formattedKey = w2ToProjectMap[key];
-      let value = object[key];
-      console.log("key", key, "value", value);
-      /* Format project data */
+      projectWithConvertedKeys[formattedKey] = object[key];
+    });
 
-      if (formattedKey === "date_due" || formattedKey === "date_assigned") {
-        try {
-          value = formatDate(value);
-        } catch (e) {
-          console.error("Failed to format date:", e);
-        }
-      } else if (formattedKey === "title") {
-        try {
-          const values = formatTitleAndEpisode(value);
-          value = values.title;
-          newProjectData["episode"] = values.episode;
-          newProjectData["id"] = object["title"];
-        } catch (e) {
-          console.error("Failed to format title or episode:", e);
-        }
-      }
+    return projectWithConvertedKeys;
+  });
+}
 
-      newProjectData[formattedKey] = value;
-    }
+function mergeProjects(existingProjects, newProjects) {
+  const projectMap = new Map();
+
+  existingProjects.forEach((p) => projectMap.set(p.id, p));
+
+  newProjects.forEach((p) => {
+    const existing = projectMap.get(p.id) || {};
+    const merged = {};
+
+    Object.keys(projectTemplate).forEach((key) => {
+      if (key in p) merged[key] = p[key];
+      else if (key in existing) merged[key] = existing[key];
+      else merged[key] = projectTemplate[key];
+    });
+
+    merged.id = p.id;
+    projectMap.set(p.id, merged);
   });
 
-  newProjectData["runtime"] = Math.round(
-    object.alpha_source_materials?.[0]?.program_runtime || 0
-  );
+  return Array.from(projectMap.values());
+}
 
-  return newProjectData;
+function storeProjects(projects) {
+  storageCache.projects = projects;
+
+  chrome.storage.sync.set({ projects }, () => {
+    console.log("Projects saved:", projects);
+  });
 }
