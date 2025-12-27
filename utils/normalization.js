@@ -29,7 +29,7 @@ export function formatTitleAndEpisode(title) {
   return { title: formattedTitle, episode: episodeFormatted };
 }
 
-function displayFormatDate(dateString) {
+function formatDisplayDate(dateString) {
   const date = new Date(dateString);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -37,7 +37,7 @@ function displayFormatDate(dateString) {
   return `${year}-${month}-${day}`;
 }
 
-function displayFormatUSD(dollars) {
+function formatDisplayUSD(dollars) {
   if (dollars == null || isNaN(dollars)) return "";
 
   return new Intl.NumberFormat("en-US", {
@@ -53,13 +53,13 @@ function roundTo(num, precision) {
   return Math.round(num * factor + Number.EPSILON) / factor;
 }
 
-function displayFormatHourlyRate(invoiceAmount, workTime) {
+function formatDisplayHourlyRate(invoiceAmount, workTime) {
   const seconds = Number(workTime);
 
   if (!seconds || seconds <= 0) return undefined;
 
   const hourlyRate = roundTo(invoiceAmount / seconds / 3600, 2);
-  const hrRateUSD = displayFormatUSD(hourlyRate);
+  const hrRateUSD = formatDisplayUSD(hourlyRate);
 
   return `${hrRateUSD}/hr`;
 }
@@ -70,12 +70,12 @@ function calculateInvoiceAmount(rate, runtime) {
   return invoiceAmount;
 }
 
-function displayFormatRatePpm(rate) {
-  let formatted = displayFormatUSD(rate);
+function formatDisplayRatePpm(rate) {
+  let formatted = formatDisplayUSD(rate);
   return `${formatted} ppm`;
 }
 
-function displayFormatTime(seconds) {
+function formatDisplayTime(seconds) {
   const hrs = Math.floor(seconds / 3600)
     .toString()
     .padStart(2, "0");
@@ -87,7 +87,7 @@ function displayFormatTime(seconds) {
 }
 
 function setId(title, episodeCode) {
-  console.log(title, episodeCode);
+  if (!title || !episodeCode) return null;
   const match = /^S(\d+)_E(\d+)$/.exec(episodeCode);
   if (!match) {
     throw new Error(`Invalid episode format: ${episodeCode}`);
@@ -122,29 +122,29 @@ export function formatProjectDisplay(project) {
     switch (key) {
       case "work_time":
       case "runtime":
-        displayValue = displayFormatTime(rawValue);
+        displayValue = formatDisplayTime(rawValue);
         break;
 
       case "rate":
-        displayValue = displayFormatRatePpm(rawValue);
+        displayValue = formatDisplayRatePpm(rawValue);
         break;
 
       case "hourly_rate":
-        displayValue = displayFormatHourlyRate(invoiceAmount, workTime);
+        displayValue = formatDisplayHourlyRate(invoiceAmount, workTime);
         break;
 
       case "invoice_amount":
         const raw = calculateInvoiceAmount(rate, runtime);
         formattedProject[key] = {
           raw: raw,
-          display: displayFormatUSD(raw),
+          display: formatDisplayUSD(raw),
         };
 
-        break;
+        return;
 
       case "date_due":
       case "date_assigned":
-        displayValue = displayFormatDate(rawValue);
+        displayValue = formatDisplayDate(rawValue);
         break;
 
       case "title":

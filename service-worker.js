@@ -1,8 +1,8 @@
 "use strict";
 import { projectTemplate } from "./utils/constants.js";
-import { formatDate, formatTitleAndEpisode } from "./utils/normalization.js";
+import { formatProjectDisplay } from "./utils/normalization.js";
 
-const CONTINUE_PAGE = "__CONTINUE_PAGE__";
+// const CONTINUE_PAGE = "__CONTINUE_PAGE__";
 
 const storageCache = { count: 0, urls: {}, projects: [] };
 let currentProject = null;
@@ -228,9 +228,9 @@ function handleAssignmentSnapshot(snapshot) {
     );
     console.log("merged", mergedProjects);
     const formattedProjects = mergedProjects.map((project) =>
-      formatProjectData(project)
+      formatProjectDisplay(project)
     );
-
+    // const formattedProjects = mergeProjects;
     storeProjects(formattedProjects);
   } catch (error) {
     console.error("Failed to handle assignment snapshot:", error);

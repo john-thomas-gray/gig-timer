@@ -173,25 +173,25 @@ function formatDisplayOptions(key, value) {
 
   switch (key) {
     case "work_time":
-      formattedValue = displayFormatTime(value);
+      formattedValue = formatDisplayTime(value);
       break;
     case "runtime":
-      formattedValue = displayFormatTime(value);
+      formattedValue = formatDisplayTime(value);
       break;
     case "rate":
-      formattedValue = displayFormatRatePpm(value);
+      formattedValue = formatDisplayRatePpm(value);
       break;
     case "hourly_rate":
-      formattedValue = displayFormatHourlyRate(invoiceAmount, workTime);
+      formattedValue = formatDisplayHourlyRate(invoiceAmount, workTime);
       break;
     case "invoice_amount":
-      formattedValue = displayFormatInvoiceAmount(rate, runtime);
+      formattedValue = formatDisplayInvoiceAmount(rate, runtime);
       break;
     case "date_due":
-      formattedValue = displayFormatDate(value);
+      formattedValue = formatDisplayDate(value);
       break;
     case "date_assigned":
-      formattedValue = displayFormatDate(value);
+      formattedValue = formatDisplayDate(value);
       break;
     default:
       formattedValue = value;
@@ -200,7 +200,7 @@ function formatDisplayOptions(key, value) {
   return formattedValue;
 }
 
-function displayFormatTime(seconds) {
+function formatDisplayTime(seconds) {
   const hrs = Math.floor(seconds / 3600)
     .toString()
     .padStart(2, "0");
@@ -211,7 +211,7 @@ function displayFormatTime(seconds) {
   return `${hrs}:${mins}:${secs}`;
 }
 
-function displayFormatUSD(dollars) {
+function formatDisplayUSD(dollars) {
   if (dollars == null || isNaN(dollars)) return "";
 
   return new Intl.NumberFormat("en-US", {
@@ -222,23 +222,23 @@ function displayFormatUSD(dollars) {
   }).format(Number(dollars));
 }
 
-function displayFormatDate(dateString) {
+function formatDisplayDate(dateString) {
   return Date(dateString);
 }
 
-function displayFormatHourlyRate(invoiceAmount, workTime) {
+function formatDisplayHourlyRate(invoiceAmount, workTime) {
   const hourlyRate = roundTo(invoiceAmount / Number(workTime) / 3600, 2);
-  const hrRateUSD = displayFormatUSD(hourlyRate);
+  const hrRateUSD = formatDisplayUSD(hourlyRate);
   return `${hrRateUSD}/hr`;
 }
 
-function displayFormatInvoiceAmount(rate, runtime) {
+function formatDisplayInvoiceAmount(rate, runtime) {
   const runtimeM = Math.round(Number(selectedProject["runtime"]) / 60);
   const invoiceAmount = Number(rate) * runtimeM;
-  return displayFormatUSD(invoiceAmount);
+  return formatDisplayUSD(invoiceAmount);
 }
 
-function displayFormatRatePpm(rate) {
-  let formatted = displayFormatUSD(rate);
+function formatDisplayRatePpm(rate) {
+  let formatted = formatDisplayUSD(rate);
   return `${formatted} ppm`;
 }
