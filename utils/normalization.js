@@ -1,8 +1,5 @@
 export function formatTitleAndEpisode(title) {
-  const titleStr =
-    typeof title === "object" && title !== null ? title.raw : title;
-
-  const parts = titleStr.split(":").map((part) => part.trim());
+  const parts = title.split(":").map((part) => part.trim());
 
   let titleParts = [];
   let season = null;
@@ -29,7 +26,7 @@ export function formatTitleAndEpisode(title) {
   return { title: formattedTitle, episode: episodeFormatted };
 }
 
-function formatDisplayDate(dateString) {
+function normalizeDate(dateString) {
   const date = new Date(dateString);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -53,15 +50,14 @@ function roundTo(num, precision) {
   return Math.round(num * factor + Number.EPSILON) / factor;
 }
 
-function formatDisplayHourlyRate(invoiceAmount, workTime) {
+function calculateHourlyRate(invoiceAmount, workTime) {
   const seconds = Number(workTime);
 
   if (!seconds || seconds <= 0) return undefined;
 
   const hourlyRate = roundTo(invoiceAmount / seconds / 3600, 2);
-  const hrRateUSD = formatDisplayUSD(hourlyRate);
 
-  return `${hrRateUSD}/hr`;
+  return hourlyRate;
 }
 
 function calculateInvoiceAmount(rate, runtime) {
@@ -101,80 +97,136 @@ function setId(title, episodeCode) {
   return `${title}: Season ${season}: Episode ${episode}: Episode ${episode} (${paddedEpisode})`;
 }
 
-export function formatProjectDisplay(project) {
-  const formattedProject = {};
+export function normalizeProjectData(project) {
+  try {
+    const normalizedProject = {};
 
-  const rate = project.rate?.raw ?? project.rate ?? 0;
-  const runtime = project.runtime?.raw ?? project.runtime ?? 0;
-  const workTime = project.work_time?.raw ?? project.work_time ?? 0;
-  const invoiceAmount =
-    project.invoice_amount?.raw ?? project.invoice_amount ?? 0;
-  const titleRaw =
-    typeof project.title === "object" ? project.title.raw : project.title;
-  const { title, episode } = formatTitleAndEpisode(titleRaw);
+    const rate = project.rate ?? undefined;
+    const runtime = project.runtime ?? undefined;
+    const workTime = project.work_time ?? 0;
+    const invoiceAmount = calculateInvoiceAmount(rate, runtime) ?? undefined;
+    console.log("projtitle", project.title);
+    const { title, episode } = formatTitleAndEpisode(project.title);
 
-  Object.keys(project).forEach((key) => {
-    const value = project[key];
-    const rawValue = value?.raw ?? value;
+    Object.keys(project).forEach((key) => {
+      let value = project[key];
 
-    let displayValue = rawValue;
+      switch (key) {
+        case "id":
+          value = setId(title, episode);
+          break;
+        case "date_assigned":
+          value = normalizeDate(value);
+          break;
+        case "date_due":
+          value = normalizeDate(value);
+          break;
+        case "episode":
+          value = episode;
+          break;
+        case "hourly_rate":
+          calculateHourlyRate(invoiceAmount, workTime);
+          break;
+        case "invoice_amount":
+          value = invoiceAmount;
+          break;
+        case "rate":
+          value = rate;
+          break;
+        case "runtime":
+          value = runtime;
+          break;
+        case "title":
+          value = title;
+          break;
+        case "work_time":
+          break;
+        default:
+          break;
+      }
 
-    switch (key) {
-      case "work_time":
-      case "runtime":
-        displayValue = formatDisplayTime(rawValue);
-        break;
-
-      case "rate":
-        displayValue = formatDisplayRatePpm(rawValue);
-        break;
-
-      case "hourly_rate":
-        displayValue = formatDisplayHourlyRate(invoiceAmount, workTime);
-        break;
-
-      case "invoice_amount":
-        const raw = calculateInvoiceAmount(rate, runtime);
-        formattedProject[key] = {
-          raw: raw,
-          display: formatDisplayUSD(raw),
-        };
-
-        return;
-
-      case "date_due":
-      case "date_assigned":
-        displayValue = formatDisplayDate(rawValue);
-        break;
-
-      case "title":
-        displayValue = title;
-        formattedProject[key] = { raw: project.title, display: displayValue };
-        return;
-
-      case "episode":
-        displayValue = episode;
-        formattedProject[key] = {
-          raw: displayValue,
-          display: displayValue,
-        };
-        return;
-
-      case "id":
-        displayValue = setId(title, episode);
-        formattedProject[key] = {
-          raw: displayValue,
-          display: displayValue,
-        };
-
-        return;
-      default:
-        displayValue = rawValue;
-        break;
-    }
-
-    formattedProject[key] = { raw: rawValue, display: displayValue };
-  });
-
-  return formattedProject;
+      normalizedProject[key] = value;
+    });
+    return normalizedProject;
+  } catch (error) {
+    console.log("Failed to normalize project data:", error);
+  }
 }
+
+// export function formatProjectDisplay(project) {
+//   const formattedProject = {};
+
+//   const rate = project.rate?.raw ?? project.rate ?? 0;
+//   const runtime = project.runtime?.raw ?? project.runtime ?? 0;
+//   const workTime = project.work_time?.raw ?? project.work_time ?? 0;
+//   const invoiceAmount =
+//     project.invoice_amount?.raw ?? project.invoice_amount ?? 0;
+//   const titleRaw =
+//     typeof project.title === "object" ? project.title.raw : project.title;
+//   const { title, episode } = formatTitleAndEpisode(titleRaw);
+
+//   Object.keys(project).forEach((key) => {
+//     const value = project[key];
+//     const rawValue = value?.raw ?? value;
+
+//     let displayValue = rawValue;
+
+//     switch (key) {
+//       case "work_time":
+//       case "runtime":
+//         displayValue = formatDisplayTime(rawValue);
+//         break;
+
+//       case "rate":
+//         displayValue = formatDisplayRatePpm(rawValue);
+//         break;
+
+//       case "hourly_rate":
+//         displayValue = formatDisplayHourlyRate(invoiceAmount, workTime);
+//         break;
+
+//       case "invoice_amount":
+//         const raw = calculateInvoiceAmount(rate, runtime);
+//         formattedProject[key] = {
+//           raw: raw,
+//           display: formatDisplayUSD(raw),
+//         };
+
+//         return;
+
+//       case "date_due":
+//       case "date_assigned":
+//         displayValue = formatDisplayDate(rawValue);
+//         break;
+
+//       case "title":
+//         displayValue = title;
+//         formattedProject[key] = { raw: project.title, display: displayValue };
+//         return;
+
+//       case "episode":
+//         displayValue = episode;
+//         formattedProject[key] = {
+//           raw: displayValue,
+//           display: displayValue,
+//         };
+//         return;
+
+//       case "id":
+//         displayValue = setId(title, episode);
+//         formattedProject[key] = {
+//           raw: displayValue,
+//           display: displayValue,
+//         };
+
+//         return;
+//       default:
+//         displayValue = rawValue;
+//         break;
+//     }
+
+//     formattedProject[key] = { raw: rawValue, display: displayValue };
+//   });
+
+//   return formattedProject;
+// }

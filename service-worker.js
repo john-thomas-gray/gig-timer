@@ -1,6 +1,6 @@
 "use strict";
 import { projectTemplate } from "./utils/constants.js";
-import { formatProjectDisplay } from "./utils/normalization.js";
+import { normalizeProjectData } from "./utils/normalization.js";
 
 // const CONTINUE_PAGE = "__CONTINUE_PAGE__";
 
@@ -210,7 +210,7 @@ async function setUpAssignmentsPage() {
       );
     }
     if (response.type === "RETURN_W2UI_DATA") {
-      handleAssignmentSnapshot(response.payload.snapshot);
+      formatAndNormalizeAssignmentData(response.payload.snapshot);
     }
   } catch (e) {
     console.warn("Failed to send message:", e);
@@ -218,36 +218,29 @@ async function setUpAssignmentsPage() {
   }
 }
 
-function handleAssignmentSnapshot(snapshot) {
+function formatAndNormalizeAssignmentData(snapshot) {
   try {
-    const w2uiData = parseSnapshot(snapshot);
-    const newProject = parseW2uiData(w2uiData);
+    const newProject = parseAssignmentData(snapshot);
     const mergedProjects = mergeProjects(
       storageCache.projects || [],
       newProject
     );
-    console.log("merged", mergedProjects);
-    const formattedProjects = mergedProjects.map((project) =>
-      formatProjectDisplay(project)
+    const normalizedProject = mergedProjects.map((project) =>
+      normalizeProjectData(project)
     );
-    // const formattedProjects = mergeProjects;
-    storeProjects(formattedProjects);
+    console.log("normalized", normalizedProject);
+    storeProjects(normalizedProject);
   } catch (error) {
     console.error("Failed to handle assignment snapshot:", error);
   }
 }
 
-function parseSnapshot(snapshot) {
-  const w2uiData = snapshot.records;
+function parseAssignmentData(snapshot) {
+  const w2uiArray = snapshot.records;
 
-  if (!Array.isArray(w2uiData)) {
+  if (!Array.isArray(w2uiArray)) {
     throw new Error("Invalid data shape");
   }
-
-  return w2uiData;
-}
-
-function parseW2uiData(w2uiArray) {
   const w2ToProjectMap = {
     alpha_clients: "client",
     created_at: "date_assigned",
@@ -268,7 +261,7 @@ function parseW2uiData(w2uiArray) {
     projectWithConvertedKeys["runtime"] = Math.round(
       object.alpha_source_materials?.[0]?.program_runtime || 0
     );
-
+    console.log("parseW", projectWithConvertedKeys);
     return projectWithConvertedKeys;
   });
 }
