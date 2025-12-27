@@ -30,7 +30,7 @@
   "web_accessible_resources": [
     {
       "matches": ["*://*/*"],
-      "resources": ["web-accessible-resources/bridge.js"]
+      "resources": ["web-accessible-resources/bridge.js", "js/normalization"]
     }
   ]
 }
