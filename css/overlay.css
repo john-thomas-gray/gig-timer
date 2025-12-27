@@ -1,0 +1,20 @@
+html,
+body {
+  height: 100vh;
+  width: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: rgba(0, 0, 0, 0.9) 2;
+}
+
+/* Off variant */
+
+.off body {
+  height: 100vh;
+  width: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: rgba(0, 0, 0, 0) 2;
+}
