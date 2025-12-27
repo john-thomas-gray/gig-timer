@@ -1,6 +1,6 @@
 "use strict";
-import { projectTemplate } from "./constants.js";
-import { formatDate, formatTitleAndEpisode } from "./normalization.js";
+import { projectTemplate } from "./utils/constants.js";
+import { formatDate, formatTitleAndEpisode } from "./utils/normalization.js";
 
 const CONTINUE_PAGE = "__CONTINUE_PAGE__";
 
