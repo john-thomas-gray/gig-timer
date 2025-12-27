@@ -18,19 +18,19 @@
     {
       "matches": ["*://*/*"],
       "js": [
-        "bridge/inject-bridge.js",
-        "js/stopwatch.js",
-        "js/assignments.js",
-        "js/workplace.js",
-        "js/idle-overlay.js",
-        "js/popup.js"
+        "content/inject-bridge.js",
+        "content/stopwatch.js",
+        "content/assignments.js",
+        "content/workplace.js",
+        "content/overlay.js",
+        "content/popup.js"
       ]
     }
   ],
   "web_accessible_resources": [
     {
       "matches": ["*://*/*"],
-      "resources": ["js/bridge.js"]
+      "resources": ["web-accessible-resources/bridge.js", "js/normalization"]
     }
   ]
 }

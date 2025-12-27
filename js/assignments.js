@@ -19,7 +19,6 @@ window.addEventListener("message", (event) => {
   if (event.data?.source !== "bridge.js") return;
 
   const { id, type, payload } = event.data;
-
   if (!id) {
     console.warn("Bridge response missing id:", event.data);
     return;

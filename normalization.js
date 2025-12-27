@@ -101,11 +101,7 @@ function setId(title, episodeCode) {
   return `${title}: Season ${season}: Episode ${episode}: Episode ${episode} (${paddedEpisode})`;
 }
 
-let count = 0;
-export function formatProjectData(project) {
-  count++;
-  console.log(count);
-
+export function formatProjectDisplay(project) {
   const formattedProject = {};
 
   const rate = project.rate?.raw ?? project.rate ?? 0;
