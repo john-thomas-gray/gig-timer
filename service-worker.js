@@ -221,11 +221,12 @@ async function setUpAssignmentsPage() {
 function handleAssignmentSnapshot(snapshot) {
   try {
     const w2uiData = parseSnapshot(snapshot);
-    const newProjects = parseW2uiData(w2uiData);
+    const newProject = parseW2uiData(w2uiData);
     const mergedProjects = mergeProjects(
       storageCache.projects || [],
-      newProjects
+      newProject
     );
+    console.log("merged", mergedProjects);
     const formattedProjects = mergedProjects.map((project) =>
       formatProjectData(project)
     );
@@ -263,6 +264,10 @@ function parseW2uiData(w2uiArray) {
       const formattedKey = w2ToProjectMap[key];
       projectWithConvertedKeys[formattedKey] = object[key];
     });
+
+    projectWithConvertedKeys["runtime"] = Math.round(
+      object.alpha_source_materials?.[0]?.program_runtime || 0
+    );
 
     return projectWithConvertedKeys;
   });

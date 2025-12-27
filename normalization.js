@@ -1,5 +1,8 @@
-function formatTitleAndEpisode(title) {
-  const parts = title.split(":").map((part) => part.trim());
+export function formatTitleAndEpisode(title) {
+  const titleStr =
+    typeof title === "object" && title !== null ? title.raw : title;
+
+  const parts = titleStr.split(":").map((part) => part.trim());
 
   let titleParts = [];
   let season = null;
@@ -51,15 +54,20 @@ function roundTo(num, precision) {
 }
 
 function displayFormatHourlyRate(invoiceAmount, workTime) {
-  const hourlyRate = roundTo(invoiceAmount / Number(workTime) / 3600, 2);
+  const seconds = Number(workTime);
+
+  if (!seconds || seconds <= 0) return undefined;
+
+  const hourlyRate = roundTo(invoiceAmount / seconds / 3600, 2);
   const hrRateUSD = displayFormatUSD(hourlyRate);
-  return `${hourlyRate}/hr`;
+
+  return `${hrRateUSD}/hr`;
 }
 
-function displayFormatInvoiceAmount(rate, runtime) {
-  const runtimeM = Math.round(Number(runtime) / 60);
-  const invoiceAmount = Number(rate) * runtimeM;
-  return displayFormatUSD(invoiceAmount);
+function calculateInvoiceAmount(rate, runtime) {
+  const runtimeRounded = Math.round(Number(runtime) / 60);
+  const invoiceAmount = Number(rate) * runtimeRounded;
+  return invoiceAmount;
 }
 
 function displayFormatRatePpm(rate) {
@@ -79,6 +87,7 @@ function displayFormatTime(seconds) {
 }
 
 function setId(title, episodeCode) {
+  console.log(title, episodeCode);
   const match = /^S(\d+)_E(\d+)$/.exec(episodeCode);
   if (!match) {
     throw new Error(`Invalid episode format: ${episodeCode}`);
@@ -92,7 +101,11 @@ function setId(title, episodeCode) {
   return `${title}: Season ${season}: Episode ${episode}: Episode ${episode} (${paddedEpisode})`;
 }
 
+let count = 0;
 export function formatProjectData(project) {
+  count++;
+  console.log(count);
+
   const formattedProject = {};
 
   const rate = project.rate?.raw ?? project.rate ?? 0;
@@ -100,8 +113,9 @@ export function formatProjectData(project) {
   const workTime = project.work_time?.raw ?? project.work_time ?? 0;
   const invoiceAmount =
     project.invoice_amount?.raw ?? project.invoice_amount ?? 0;
-  const title = formatTitleAndEpisode(project.title).title;
-  const episode = formatTitleAndEpisode(project.title).episode;
+  const titleRaw =
+    typeof project.title === "object" ? project.title.raw : project.title;
+  const { title, episode } = formatTitleAndEpisode(titleRaw);
 
   Object.keys(project).forEach((key) => {
     const value = project[key];
@@ -124,7 +138,12 @@ export function formatProjectData(project) {
         break;
 
       case "invoice_amount":
-        displayValue = displayFormatInvoiceAmount(rate, runtime);
+        const raw = calculateInvoiceAmount(rate, runtime);
+        formattedProject[key] = {
+          raw: raw,
+          display: displayFormatUSD(raw),
+        };
+
         break;
 
       case "date_due":
@@ -133,15 +152,17 @@ export function formatProjectData(project) {
         break;
 
       case "title":
-        displayValue = formatTitleAndEpisode(project.title).title;
+        displayValue = title;
         formattedProject[key] = { raw: project.title, display: displayValue };
+        return;
 
       case "episode":
-        displayValue = formatTitleAndEpisode(project.title).episode;
+        displayValue = episode;
         formattedProject[key] = {
           raw: displayValue,
           display: displayValue,
         };
+        return;
 
       case "id":
         displayValue = setId(title, episode);
@@ -149,8 +170,11 @@ export function formatProjectData(project) {
           raw: displayValue,
           display: displayValue,
         };
+
+        return;
       default:
         displayValue = rawValue;
+        break;
     }
 
     formattedProject[key] = { raw: rawValue, display: displayValue };
