@@ -24,13 +24,17 @@
         "content/workplace.js",
         "content/overlay.js",
         "content/popup.js"
-      ]
+      ],
+      "type": "module"
     }
   ],
   "web_accessible_resources": [
     {
       "matches": ["*://*/*"],
-      "resources": ["web-accessible-resources/bridge.js", "js/normalization.js"]
+      "resources": [
+        "web-accessible-resources/bridge.js",
+        "web-accessible-resources/normalization.js"
+      ]
     }
   ]
 }

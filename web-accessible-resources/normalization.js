@@ -66,7 +66,7 @@ function calculateInvoiceAmount(rate, runtime) {
   return invoiceAmount;
 }
 
-function formatDisplayRatePpm(rate) {
+export function formatDisplayRatePpm(rate) {
   let formatted = formatDisplayUSD(rate);
   return `${formatted} ppm`;
 }

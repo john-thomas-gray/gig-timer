@@ -1,7 +1,28 @@
+import(chrome.runtime.getURL("web-accessible-resources/normalization.js")).then(
+  (m) => console.log(m.formatDisplayRatePpm(6))
+);
+
+let normalizationModule;
+
+async function loadNormalizationModule() {
+  if (!normalizationModule) {
+    normalizationModule = await import(
+      chrome.runtime.getURL("web-accessible-resources/normalization.js")
+    );
+  }
+  return normalizationModule;
+}
+
+async function doSomething() {
+  const module = await loadNormalizationModule();
+  module.normalizeData(someData);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   init();
 });
 
+// console.log("display", formatDisplayRatePpm(5));
 let existingProjects = [];
 let selectedProject = null;
 let defaultFields;
@@ -61,14 +82,14 @@ function buildFormInputs() {
 
   const formSchema = {
     episode: "text",
-    work_time: "text",
+    work_time: "number",
     workplace_url: "text",
-    runtime: "text",
+    runtime: "number",
     rate: "text",
-    hourly_rate: "text",
-    invoice_amount: "text",
-    date_due: "text",
-    date_assigned: "text",
+    hourly_rate: "number",
+    invoice_amount: "number",
+    date_due: "date",
+    date_assigned: "date",
     contractor: "text",
     client: "text",
   };

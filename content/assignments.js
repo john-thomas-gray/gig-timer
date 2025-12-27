@@ -1,3 +1,4 @@
+console.log("assignments");
 const pending = new Map();
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

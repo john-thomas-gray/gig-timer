@@ -13,5 +13,3 @@ export const projectTemplate = {
   work_time: 0,
   workplace_url: undefined,
 };
-
-// window.bingus = "bongus";
