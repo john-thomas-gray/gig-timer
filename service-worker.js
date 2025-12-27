@@ -1,8 +1,8 @@
 "use strict";
 import { projectTemplate } from "./utils/constants.js";
-import { normalizeProjectData } from "./utils/normalization.js";
+import { normalizeProjectData } from "./web-accessible-resources/normalization.js";
 
-// const CONTINUE_PAGE = "__CONTINUE_PAGE__";
+const CONTINUE_PAGE = "__CONTINUE_PAGE__";
 
 const storageCache = { count: 0, urls: {}, projects: [] };
 let currentProject = null;
@@ -155,12 +155,8 @@ function setProjectUrl(id) {
 function getProjectById(workplaceId) {
   console.log(workplaceId);
   const projects = storageCache.projects;
-  /* Bandaid making Id checking less strict
-  project.id = "Betrayal: Secrets and Lies: Season 1: Episode 1: Episode 1 (E0001)"
-  workplaceId = "Betrayal: Secrets and Lies: Season 1: Episode 1: Episode 1"
-  */
-  const project = projects.find((p) => p.id.includes(workplaceId));
-  console.log(project);
+  const project = projects.find((p) => p.id === workplaceId);
+
   if (project) return project;
 }
 
@@ -261,7 +257,6 @@ function parseAssignmentData(snapshot) {
     projectWithConvertedKeys["runtime"] = Math.round(
       object.alpha_source_materials?.[0]?.program_runtime || 0
     );
-    console.log("parseW", projectWithConvertedKeys);
     return projectWithConvertedKeys;
   });
 }

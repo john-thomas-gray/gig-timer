@@ -89,12 +89,12 @@ function setId(title, episodeCode) {
     throw new Error(`Invalid episode format: ${episodeCode}`);
   }
 
-  const season = Number(match[1]);
-  const episode = Number(match[2]);
+  const seasonNum = Number(match[1]);
+  const episodeNum = Number(match[2]);
 
-  const paddedEpisode = `E${String(episode).padStart(4, "0")}`;
+  const paddedEpisode = `E${String(episodeNum).padStart(4, "0")}`;
 
-  return `${title}: Season ${season}: Episode ${episode}: Episode ${episode} (${paddedEpisode})`;
+  return `${title}: Season ${seasonNum}: Episode ${episodeNum}: Episode ${episodeNum} (${paddedEpisode})`;
 }
 
 export function normalizeProjectData(project) {

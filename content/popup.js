@@ -1,22 +1,22 @@
-import(chrome.runtime.getURL("web-accessible-resources/normalization.js")).then(
-  (m) => console.log(m.formatDisplayRatePpm(6))
-);
+// import(chrome.runtime.getURL("web-accessible-resources/normalization.js")).then(
+//   (m) => console.log(m.formatDisplayRatePpm(6))
+// );
 
-let normalizationModule;
+// let normalizationModule;
 
-async function loadNormalizationModule() {
-  if (!normalizationModule) {
-    normalizationModule = await import(
-      chrome.runtime.getURL("web-accessible-resources/normalization.js")
-    );
-  }
-  return normalizationModule;
-}
+// async function loadNormalizationModule() {
+//   if (!normalizationModule) {
+//     normalizationModule = await import(
+//       chrome.runtime.getURL("web-accessible-resources/normalization.js")
+//     );
+//   }
+//   return normalizationModule;
+// }
 
-async function doSomething() {
-  const module = await loadNormalizationModule();
-  module.normalizeData(someData);
-}
+// async function formatDisplayRatePpm() {
+//   const module = await loadNormalizationModule();
+//   module.formatDisplayRatePpm(someData);
+// }
 
 document.addEventListener("DOMContentLoaded", () => {
   init();
@@ -70,7 +70,7 @@ function buildProjectOptions(projects) {
     }
 
     const option = document.createElement("option");
-    option.value = project.id ?? generateId(project.title, project.episode);
+    option.value = project.id ?? setId(project.title, project.episode);
     option.textContent = project.episode || "Unknown";
 
     optgroups[title].appendChild(option);
@@ -125,20 +125,20 @@ function onSelectChange() {
   setFormText();
 }
 
-function generateId(title, episode) {
-  const match = episode.match(/S(\d+)_E(\d+)/i);
+// Found in normalization.js
+function setId(title, episodeCode) {
+  if (!title || !episodeCode) return null;
+  const match = /^S(\d+)_E(\d+)$/.exec(episodeCode);
   if (!match) {
-    throw new Error("Episode format is invalid");
+    throw new Error(`Invalid episode format: ${episodeCode}`);
   }
 
-  const seasonNum = parseInt(match[1], 10);
-  const episodeNum = parseInt(match[2], 10);
+  const seasonNum = Number(match[1]);
+  const episodeNum = Number(match[2]);
 
-  const paddedEpisode = String(episodeNum).padStart(4, "0");
+  const paddedEpisode = `E${String(episodeNum).padStart(4, "0")}`;
 
-  const id = `${title}: Season ${seasonNum}: Episode ${episodeNum}: Episode ${episodeNum} (E${paddedEpisode})`;
-
-  return id;
+  return `${title}: Season ${seasonNum}: Episode ${episodeNum}: Episode ${episodeNum} (${paddedEpisode})`;
 }
 
 function formatFieldLabel(key) {
@@ -152,6 +152,7 @@ function formatFieldLabel(key) {
     .join(" ");
 }
 
+// Should be a util
 function roundTo(num, precision) {
   const factor = Math.pow(10, precision);
   return Math.round(num * factor + Number.EPSILON) / factor;
@@ -180,7 +181,7 @@ function setFormText() {
     let value = selectedProject[key];
 
     value = formatDisplayOptions(key, value);
-
+    console.log(value);
     input.value = value ?? "";
   }
 }
@@ -203,10 +204,11 @@ function formatDisplayOptions(key, value) {
       formattedValue = formatDisplayRatePpm(value);
       break;
     case "hourly_rate":
-      formattedValue = formatDisplayHourlyRate(invoiceAmount, workTime);
+      formattedValue = formatDisplayHourlyRate(value);
+      console.log("hr", formattedValue);
       break;
     case "invoice_amount":
-      formattedValue = formatDisplayInvoiceAmount(rate, runtime);
+      formattedValue = formatDisplayInvoiceAmount(value);
       break;
     case "date_due":
       formattedValue = formatDisplayDate(value);
@@ -217,7 +219,7 @@ function formatDisplayOptions(key, value) {
     default:
       formattedValue = value;
   }
-
+  console.log(key);
   return formattedValue;
 }
 
@@ -247,16 +249,13 @@ function formatDisplayDate(dateString) {
   return Date(dateString);
 }
 
-function formatDisplayHourlyRate(invoiceAmount, workTime) {
-  const hourlyRate = roundTo(invoiceAmount / Number(workTime) / 3600, 2);
+function formatDisplayHourlyRate(hourlyRate) {
   const hrRateUSD = formatDisplayUSD(hourlyRate);
   return `${hrRateUSD}/hr`;
 }
 
-function formatDisplayInvoiceAmount(rate, runtime) {
-  const runtimeM = Math.round(Number(selectedProject["runtime"]) / 60);
-  const invoiceAmount = Number(rate) * runtimeM;
-  return formatDisplayUSD(invoiceAmount);
+function formatDisplayInvoiceAmount(amount) {
+  return formatDisplayUSD(amount);
 }
 
 function formatDisplayRatePpm(rate) {
