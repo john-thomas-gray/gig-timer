@@ -20,7 +20,7 @@ async function initCurrentProject() {
 
   const activeId = storageCache.lastProjectId;
   if (!activeId) return null;
-
+  console.log("activeId:", activeId);
   currentProject = getProjectById(activeId);
 
   return currentProject;
@@ -67,7 +67,7 @@ function addListeners() {
         if (project) {
           currentProject = project;
           chrome.storage.sync.set({ lastProjectId: project.id });
-          await setUpWorkplacePage(project.id);
+          await setProjectUrl(project.id);
           initStopwatch();
         }
       }
@@ -122,12 +122,7 @@ async function getWorkplaceId() {
   }
 }
 
-async function setUpWorkplacePage(id) {
-  if (!id || id === CONTINUE_PAGE) return;
-  setProjectUrl(id);
-}
-
-function setProjectUrl(id) {
+async function setProjectUrl(id) {
   try {
     if (!currentProject || currentProject.workplace_url) return;
 
@@ -153,9 +148,10 @@ function setProjectUrl(id) {
 }
 
 function getProjectById(workplaceId) {
-  console.log(workplaceId);
+  console.log("getProject 1");
   const projects = storageCache.projects;
   const project = projects.find((p) => p.id === workplaceId);
+  console.log("getProject 2");
 
   if (project) return project;
 }
@@ -167,7 +163,7 @@ function storeWorkTime(workTime) {
     if (!currentProject) return;
     currentProject.work_time = workTime;
 
-    chrome.storage.sync.set({ projects }, () => {
+    storeProjects(projects, () => {
       console.log("Work time saved:", workTime);
     });
   } catch (e) {
@@ -217,15 +213,17 @@ async function setUpAssignmentsPage() {
 function formatAndNormalizeAssignmentData(snapshot) {
   try {
     const newProject = parseAssignmentData(snapshot);
-    const mergedProjects = mergeProjects(
-      storageCache.projects || [],
-      newProject
-    );
-    const normalizedProject = mergedProjects.map((project) =>
+    console.log("newProjecty", newProject);
+    const normalizedProject = newProject.map((project) =>
       normalizeProjectData(project)
     );
     console.log("normalized", normalizedProject);
-    storeProjects(normalizedProject);
+    const mergedProjects = mergeProjects(
+      storageCache.projects || [],
+      normalizedProject
+    );
+    console.log("mergey", mergedProjects);
+    storeProjects(mergedProjects);
   } catch (error) {
     console.error("Failed to handle assignment snapshot:", error);
   }
@@ -283,10 +281,11 @@ function mergeProjects(existingProjects, newProjects) {
   return Array.from(projectMap.values());
 }
 
-function storeProjects(projects) {
+function storeProjects(projects, callback) {
   storageCache.projects = projects;
 
   chrome.storage.sync.set({ projects }, () => {
     console.log("Projects saved:", projects);
+    if (callback) callback();
   });
 }

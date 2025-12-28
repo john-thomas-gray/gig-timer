@@ -98,18 +98,39 @@ function setId(title, episodeCode) {
 }
 
 export function normalizeProjectData(project) {
+  // import
+  const projectTemplate = {
+    id: undefined,
+    client: undefined,
+    contractor: "Pixelogic Media",
+    date_assigned: undefined,
+    date_due: undefined,
+    episode: undefined,
+    hourly_rate: undefined,
+    invoice_amount: undefined,
+    rate: 6,
+    runtime: undefined,
+    title: undefined,
+    work_time: 0,
+    workplace_url: undefined,
+  };
+
   try {
     const normalizedProject = {};
 
-    const rate = project.rate ?? undefined;
-    const runtime = project.runtime ?? undefined;
-    const workTime = project.work_time ?? 0;
-    const invoiceAmount = calculateInvoiceAmount(rate, runtime) ?? undefined;
-    console.log("projtitle", project.title);
-    const { title, episode } = formatTitleAndEpisode(project.title);
+    Object.keys(projectTemplate).forEach((key) => {
+      normalizedProject[key] =
+        key in project ? project[key] : projectTemplate[key];
+    });
 
-    Object.keys(project).forEach((key) => {
-      let value = project[key];
+    const rate = normalizedProject.rate ?? undefined;
+    const runtime = normalizedProject.runtime ?? undefined;
+    const workTime = normalizedProject.work_time ?? 0;
+    const invoiceAmount = calculateInvoiceAmount(rate, runtime) ?? undefined;
+    const { title, episode } = formatTitleAndEpisode(normalizedProject.title);
+
+    Object.keys(normalizedProject).forEach((key) => {
+      let value = normalizedProject[key];
 
       switch (key) {
         case "id":
@@ -147,6 +168,7 @@ export function normalizeProjectData(project) {
 
       normalizedProject[key] = value;
     });
+
     return normalizedProject;
   } catch (error) {
     console.log("Failed to normalize project data:", error);
