@@ -1,29 +1,35 @@
 export function formatTitleAndEpisode(title) {
-  const parts = title.split(":").map((part) => part.trim());
+  try {
+    const parts = title.split(":").map((part) => part.trim());
 
-  let titleParts = [];
-  let season = null;
-  let episode = null;
+    let titleParts = [];
+    let season = null;
+    let episode = null;
 
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    const seasonMatch = part.match(/^Season (\d+)$/);
-    if (seasonMatch) {
-      season = seasonMatch[1];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const seasonMatch = part.match(/^Season (\d+)$/);
+      if (seasonMatch) {
+        season = seasonMatch[1];
 
-      if (i + 1 < parts.length) {
-        const episodeMatch = parts[i + 1].match(/^Episode (\d+)/);
-        if (episodeMatch) episode = episodeMatch[1];
+        if (i + 1 < parts.length) {
+          const episodeMatch = parts[i + 1].match(/^Episode (\d+)/);
+          if (episodeMatch) episode = episodeMatch[1];
+        }
+        break;
       }
-      break;
+      titleParts.push(part);
     }
-    titleParts.push(part);
+
+    const formattedTitle = titleParts.join(": ");
+    const episodeFormatted =
+      season && episode ? `S${season}_E${episode}` : null;
+
+    return { title: formattedTitle, episode: episodeFormatted };
+  } catch (e) {
+    console.log("formatTitle failed", e);
+    return "";
   }
-
-  const formattedTitle = titleParts.join(": ");
-  const episodeFormatted = season && episode ? `S${season}_E${episode}` : null;
-
-  return { title: formattedTitle, episode: episodeFormatted };
 }
 
 function normalizeDate(dateString) {
@@ -98,71 +104,72 @@ function setId(title, episodeCode) {
 }
 
 export function normalizeProjectData(project) {
-  // import
-  const projectTemplate = {
-    id: undefined,
-    client: undefined,
-    contractor: "Pixelogic Media",
-    date_assigned: undefined,
-    date_due: undefined,
-    episode: undefined,
-    hourly_rate: undefined,
-    invoice_amount: undefined,
-    rate: 6,
-    runtime: undefined,
-    title: undefined,
-    work_time: 0,
-    workplace_url: undefined,
-  };
-
   try {
-    const normalizedProject = {};
+    const projectTemplate = {
+      id: null,
+      client: null,
+      contractor: "Pixelogic Media",
+      date_assigned: null,
+      date_due: null,
+      episode: null,
+      hourly_rate: null,
+      invoice_amount: null,
+      rate: 6,
+      runtime: null,
+      title: null,
+      work_time: 0,
+      workplace_url: null,
+    };
 
-    Object.keys(projectTemplate).forEach((key) => {
-      normalizedProject[key] =
-        key in project ? project[key] : projectTemplate[key];
-    });
+    const normalizedProject = { ...projectTemplate, ...project };
 
-    const rate = normalizedProject.rate ?? undefined;
-    const runtime = normalizedProject.runtime ?? undefined;
+    const rate = normalizedProject.rate;
+    const runtime = normalizedProject.runtime;
     const workTime = normalizedProject.work_time ?? 0;
     const invoiceAmount = calculateInvoiceAmount(rate, runtime) ?? undefined;
     const { title, episode } = formatTitleAndEpisode(normalizedProject.title);
 
-    Object.keys(normalizedProject).forEach((key) => {
+    Object.keys(projectTemplate).forEach((key) => {
       let value = normalizedProject[key];
 
       switch (key) {
         case "id":
           value = setId(title, episode);
           break;
+
         case "date_assigned":
-          value = normalizeDate(value);
-          break;
         case "date_due":
           value = normalizeDate(value);
           break;
+
         case "episode":
           value = episode;
           break;
+
         case "hourly_rate":
-          calculateHourlyRate(invoiceAmount, workTime);
+          value =
+            calculateHourlyRate(invoiceAmount, workTime) ??
+            projectTemplate.hourly_rate;
           break;
+
         case "invoice_amount":
-          value = invoiceAmount;
+          value = invoiceAmount ?? projectTemplate.invoice_amount;
           break;
+
         case "rate":
-          value = rate;
+          value = rate ?? projectTemplate.rate;
           break;
+
         case "runtime":
-          value = runtime;
+          value = runtime ?? projectTemplate.runtime;
           break;
+
         case "title":
           value = title;
           break;
+
         case "work_time":
-          break;
-        default:
+          value = workTime;
           break;
       }
 
@@ -172,6 +179,7 @@ export function normalizeProjectData(project) {
     return normalizedProject;
   } catch (error) {
     console.log("Failed to normalize project data:", error);
+    return { ...projectTemplate };
   }
 }
 

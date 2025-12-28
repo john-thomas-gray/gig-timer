@@ -82,14 +82,14 @@ function buildFormInputs() {
 
   const formSchema = {
     episode: "text",
-    work_time: "number",
+    work_time: "text",
     workplace_url: "text",
-    runtime: "number",
+    runtime: "text",
     rate: "text",
-    hourly_rate: "number",
-    invoice_amount: "number",
-    date_due: "date",
-    date_assigned: "date",
+    hourly_rate: "text",
+    invoice_amount: "text",
+    date_due: "text",
+    date_assigned: "text",
     contractor: "text",
     client: "text",
   };
@@ -188,10 +188,6 @@ function setFormText() {
 
 function formatDisplayOptions(key, value) {
   let formattedValue = "";
-  const rate = selectedProject["rate"];
-  const runtime = selectedProject["runtime"];
-  const workTime = selectedProject["work_time"];
-  const invoiceAmount = selectedProject["invoice_amount"];
 
   switch (key) {
     case "work_time":
