@@ -1,5 +1,5 @@
 "use strict";
-import { projectTemplate } from "./utils/constants.js";
+import { projectTemplate, PROJECT_FIELDS } from "./utils/constants.js";
 import { normalizeProjectData } from "./web-accessible-resources/normalization.js";
 
 const storageCache = { count: 0, urls: {}, projects: [] };
@@ -90,15 +90,33 @@ function addListeners() {
       return;
     }
 
-    if (msg.action === "submit-project" && msg.projectId) {
-      console.log("recieved");
-      submitProject(msg.projectId);
+    if (msg.action === "export-project-data" && msg.projectId) {
+      exportProjectData(msg.projectId);
     }
   });
 }
 
-function submitProject(projectId) {
-  console.log(projectId);
+function exportProjectData(projectId) {
+  const projectData = getProjectById(projectId);
+
+  function safeFilename(value) {
+    return String(value)
+      .trim()
+      .replace(/[\/\\?%*:|"<>]/g, "_");
+  }
+
+  const result = JSON.stringify(projectData);
+  const filename = `${safeFilename(projectData.title)}_${safeFilename(
+    projectData.episode
+  )}`;
+  console.log("snapshot:", JSON.parse(JSON.stringify(projectData)));
+
+  const url = "data:application/json;base64," + btoa(result);
+
+  chrome.downloads.download({
+    url,
+    filename: filename,
+  });
 }
 
 function getCurrentWorktime() {
@@ -152,11 +170,9 @@ async function setProjectUrl(id) {
   }
 }
 
-function getProjectById(workplaceId) {
-  console.log("getProject 1");
+function getProjectById(id) {
   const projects = storageCache.projects;
-  const project = projects.find((p) => p.id === workplaceId);
-  console.log("getProject 2");
+  const project = projects.find((p) => p.id === id);
 
   if (project) return project;
 }

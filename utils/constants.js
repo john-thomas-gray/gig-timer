@@ -13,3 +13,19 @@ export const projectTemplate = {
   work_time: 0,
   workplace_url: undefined,
 };
+
+export const PROJECT_FIELDS = [
+  "id",
+  "client",
+  "contractor",
+  "date_assigned",
+  "date_due",
+  "episode",
+  "hourly_rate",
+  "invoice_amount",
+  "rate",
+  "runtime",
+  "title",
+  "work_time",
+  "workplace_url",
+];

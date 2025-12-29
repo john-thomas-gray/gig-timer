@@ -9,7 +9,7 @@
     "default_title": "Gig Timer"
   },
   "host_permissions": ["*://*/*"],
-  "permissions": ["storage", "tabs", "activeTab", "webNavigation"],
+  "permissions": ["storage", "tabs", "activeTab", "webNavigation", "downloads"],
   "background": {
     "service_worker": "./service-worker.js",
     "type": "module"

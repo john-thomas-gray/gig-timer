@@ -19,16 +19,13 @@
 
 document.addEventListener("DOMContentLoaded", () => {
   init();
-  submitButton.addEventListener("click", () => {
-    submitProject();
-  });
 });
-const submitButton = document.getElementById("submitButton");
+const exportButton = document.getElementById("exportButton");
 
 document.addEventListener("click", (e) => {
-  if (e.target && e.target.id === "submitButton") {
-    submitProject();
-  }
+  exportButton.addEventListener("click", () => {
+    exportProject();
+  });
 });
 
 let existingProjects = [];
@@ -181,7 +178,7 @@ function setFormText() {
   }
 }
 
-function submitProject() {
+function exportProject() {
   console.log("sending...", selectedProject);
   if (!selectedProject.id) {
     console.warn("Project doesn't have an id");
@@ -189,7 +186,7 @@ function submitProject() {
   }
 
   chrome.runtime.sendMessage({
-    action: "submit-project",
+    action: "export-project-data",
     projectId: selectedProject.id,
     source: "popup.js",
   });
