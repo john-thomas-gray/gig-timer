@@ -1,4 +1,4 @@
-export function formatTitleAndEpisode(title) {
+export function parseTitleAndEpisode(title) {
   try {
     const parts = title.split(":").map((part) => part.trim());
 
@@ -40,17 +40,6 @@ function normalizeDate(dateString) {
   return `${year}-${month}-${day}`;
 }
 
-function formatDisplayUSD(dollars) {
-  if (dollars == null || isNaN(dollars)) return "";
-
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(dollars));
-}
-
 function roundTo(num, precision) {
   const factor = Math.pow(10, precision);
   return Math.round(num * factor + Number.EPSILON) / factor;
@@ -70,22 +59,6 @@ function calculateInvoiceAmount(rate, runtime) {
   const runtimeRounded = Math.round(Number(runtime) / 60);
   const invoiceAmount = Number(rate) * runtimeRounded;
   return invoiceAmount;
-}
-
-export function formatDisplayRatePpm(rate) {
-  let formatted = formatDisplayUSD(rate);
-  return `${formatted} ppm`;
-}
-
-function formatDisplayTime(seconds) {
-  const hrs = Math.floor(seconds / 3600)
-    .toString()
-    .padStart(2, "0");
-  const mins = Math.floor((seconds % 3600) / 60)
-    .toString()
-    .padStart(2, "0");
-  const secs = (seconds % 60).toString().padStart(2, "0");
-  return `${hrs}:${mins}:${secs}`;
 }
 
 function setId(title, episodeCode) {
@@ -127,7 +100,7 @@ export function normalizeProjectData(project) {
     const runtime = normalizedProject.runtime;
     const workTime = normalizedProject.work_time ?? 0;
     const invoiceAmount = calculateInvoiceAmount(rate, runtime) ?? undefined;
-    const { title, episode } = formatTitleAndEpisode(normalizedProject.title);
+    const { title, episode } = parseTitleAndEpisode(normalizedProject.title);
 
     Object.keys(projectTemplate).forEach((key) => {
       let value = normalizedProject[key];
@@ -182,81 +155,3 @@ export function normalizeProjectData(project) {
     return { ...projectTemplate };
   }
 }
-
-// export function formatProjectDisplay(project) {
-//   const formattedProject = {};
-
-//   const rate = project.rate?.raw ?? project.rate ?? 0;
-//   const runtime = project.runtime?.raw ?? project.runtime ?? 0;
-//   const workTime = project.work_time?.raw ?? project.work_time ?? 0;
-//   const invoiceAmount =
-//     project.invoice_amount?.raw ?? project.invoice_amount ?? 0;
-//   const titleRaw =
-//     typeof project.title === "object" ? project.title.raw : project.title;
-//   const { title, episode } = formatTitleAndEpisode(titleRaw);
-
-//   Object.keys(project).forEach((key) => {
-//     const value = project[key];
-//     const rawValue = value?.raw ?? value;
-
-//     let displayValue = rawValue;
-
-//     switch (key) {
-//       case "work_time":
-//       case "runtime":
-//         displayValue = formatDisplayTime(rawValue);
-//         break;
-
-//       case "rate":
-//         displayValue = formatDisplayRatePpm(rawValue);
-//         break;
-
-//       case "hourly_rate":
-//         displayValue = formatDisplayHourlyRate(invoiceAmount, workTime);
-//         break;
-
-//       case "invoice_amount":
-//         const raw = calculateInvoiceAmount(rate, runtime);
-//         formattedProject[key] = {
-//           raw: raw,
-//           display: formatDisplayUSD(raw),
-//         };
-
-//         return;
-
-//       case "date_due":
-//       case "date_assigned":
-//         displayValue = formatDisplayDate(rawValue);
-//         break;
-
-//       case "title":
-//         displayValue = title;
-//         formattedProject[key] = { raw: project.title, display: displayValue };
-//         return;
-
-//       case "episode":
-//         displayValue = episode;
-//         formattedProject[key] = {
-//           raw: displayValue,
-//           display: displayValue,
-//         };
-//         return;
-
-//       case "id":
-//         displayValue = setId(title, episode);
-//         formattedProject[key] = {
-//           raw: displayValue,
-//           display: displayValue,
-//         };
-
-//         return;
-//       default:
-//         displayValue = rawValue;
-//         break;
-//     }
-
-//     formattedProject[key] = { raw: rawValue, display: displayValue };
-//   });
-
-//   return formattedProject;
-// }

@@ -2,8 +2,6 @@
 import { projectTemplate } from "./utils/constants.js";
 import { normalizeProjectData } from "./web-accessible-resources/normalization.js";
 
-const CONTINUE_PAGE = "__CONTINUE_PAGE__";
-
 const storageCache = { count: 0, urls: {}, projects: [] };
 let currentProject = null;
 let currentTabId = null;
@@ -92,8 +90,15 @@ function addListeners() {
       return;
     }
 
-    runtimeMessageListener(msg, sender, sendResponse);
+    if (msg.action === "submit-project" && msg.projectId) {
+      console.log("recieved");
+      submitProject(msg.projectId);
+    }
   });
+}
+
+function submitProject(projectId) {
+  console.log(projectId);
 }
 
 function getCurrentWorktime() {
