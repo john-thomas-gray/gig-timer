@@ -12,8 +12,8 @@ let hasAddedListeners = false;
 /* WARNING: Do not save to public repo */
 const sheetsData = {
   deploymentId:
-    "AKfycbygO2admiBmdsqUZjNMMD37fk5Jko4YCxOqCgVkPKg2M4FFgXX5Qq53urUADjweBzYB",
-  spreadSheetId: "13LL5fBC7jZui88L2IDjh7sJvLR6dwCrnfHELCkOsLHU",
+    "AKfycbyCzLAwhZwr_wsuRBP5bNhf6EhWnP09yyHIjZEf6j5UIAd_Hch2oYQtntlBuROJTshr",
+  spreadSheetId: "1LcXPLmbIF7r8zC2z2got9wfbCxAMCRPPd65M4kaRBm0",
   spreadSheetName: "Sheet2",
 };
 

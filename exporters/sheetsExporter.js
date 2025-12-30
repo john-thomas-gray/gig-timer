@@ -4,16 +4,35 @@ export async function exportProjectData(projectData, sheetsData) {
     spreadSheetId: sheetsData.spreadSheetId,
     spreadSheetName: sheetsData.spreadSheetName,
   };
-
-  const jsonExport = JSON.stringify(exportPackage);
-  const res = await fetch(
-    `https://script.google.com/macros/s/AKfycbwNE3AI4vRI_bZ8BKn0OybBszWZThodNqYNtrfqp69aXR4SWA3CMqindTnWACWHMaZX/exec`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: jsonExport,
+  try {
+    const response = await fetch(
+      `https://script.google.com/macros/s/${sheetsData.deploymentId}/exec`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(exportPackage),
+        keepalive: true,
+      }
+    );
+    const responseText = await response.text().catch(() => "");
+    if (!response.ok) {
+      throw new Error(
+        `HTTP ${response.status}${
+          responseText.length > 0 ? `: ${responseText}` : ""
+        }`
+      );
     }
-  );
-
-  console.log("sent", jsonExport, sheetsData.deploymentId, res.status);
+    if (responseText.trim().toUpperCase() !== "OK") {
+      throw new Error(
+        responseText.length > 0
+          ? `Sheet responded with: ${responseText}`
+          : "Sheet responded without OK confirmation."
+      );
+    }
+    console.log("Popup sync success:", responseText || "OK");
+    return responseText || "OK";
+  } catch (error) {
+    console.error("Popup sync failed:", error);
+    throw error;
+  }
 }
