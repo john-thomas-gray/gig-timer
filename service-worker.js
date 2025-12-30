@@ -65,7 +65,8 @@ function addListeners() {
 
       if (workplace && url.includes(workplace)) {
         const id = await getWorkplaceId();
-        const project = getProjectById(id);
+        console.log("id:", id);
+        const project = getProjectById(id, url);
         if (project) {
           currentProject = project;
           chrome.storage.sync.set({ lastProjectId: project.id });
@@ -142,10 +143,15 @@ function setProjectUrl(id) {
   }
 }
 
-function getProjectById(id) {
+function getProjectById(id, url) {
   const projects = storageCache.projects;
-  if (!projects) {
+  if (url && !projects && id !== "__CONTINUE_PAGE__") {
     // Create new project; store url and workplaceId
+    storeProjects({
+      id: id,
+      contractor: "Pixelogic Media",
+      workplace_url: url,
+    });
     return;
   }
   const project = projects.find((p) => p.id === id);
