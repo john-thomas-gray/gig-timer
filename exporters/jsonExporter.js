@@ -4,14 +4,13 @@ export function exportProjectData(projectData) {
       .trim()
       .replace(/[\/\\?%*:|"<>]/g, "_");
   }
-  console.log(projectData);
-  const result = JSON.stringify(projectData);
+
+  const jsonExport = JSON.stringify(projectData);
   const filename = `${safeFilename(projectData.title)}_${safeFilename(
     projectData.episode
   )}`;
-  console.log("snapshot:", JSON.parse(JSON.stringify(projectData)));
 
-  const url = "data:application/json;base64," + btoa(result);
+  const url = "data:application/json;base64," + btoa(jsonExport);
 
   chrome.downloads.download({
     url,

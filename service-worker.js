@@ -1,7 +1,7 @@
 "use strict";
 import { projectTemplate } from "./utils/constants.js";
 import { normalizeProjectData } from "./web-accessible-resources/normalization.js";
-import { exportProjectData } from "./exporters/jsonExporter.js";
+import { exportProjectData } from "./exporters/sheetsExporter.js";
 import { calculateHourlyRate } from "./web-accessible-resources/normalization.js";
 
 const storageCache = { count: 0, urls: {}, projects: [] };
@@ -9,6 +9,13 @@ let currentProject = null;
 let currentTabId = null;
 let currentUrl = null;
 let hasAddedListeners = false;
+/* WARNING: Do not save to public repo */
+const sheetsData = {
+  deploymentId:
+    "AKfycbwNE3AI4vRI_bZ8BKn0OybBszWZThodNqYNtrfqp69aXR4SWA3CMqindTnWACWHMaZX",
+  spreadSheetId: "13LL5fBC7jZui88L2IDjh7sJvLR6dwCrnfHELCkOsLHU",
+  spreadSheetName: "Sheet2",
+};
 
 async function initStorageCache() {
   const items = await chrome.storage.sync.get([
@@ -100,7 +107,7 @@ function addListeners() {
 
     if (msg.action === "export-project-data" && msg.projectId) {
       const projectData = getProjectById(msg.projectId);
-      exportProjectData(projectData);
+      exportProjectData(projectData, sheetsData);
     }
   });
 }
