@@ -45,14 +45,11 @@ function roundTo(num, precision) {
   return Math.round(num * factor + Number.EPSILON) / factor;
 }
 
-export function calculateHourlyRate(invoiceAmount, workTime) {
-  const seconds = Number(workTime);
+export function calculateHourlyRate(invoiceAmount, seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  if (!Number.isFinite(invoiceAmount)) return null;
 
-  if (!seconds || seconds <= 0) return null;
-
-  const hourlyRate = roundTo((invoiceAmount / seconds) * 3600, 2);
-
-  return hourlyRate;
+  return roundTo((invoiceAmount / seconds) * 3600, 2);
 }
 
 function calculateInvoiceAmount(rate, runtime) {

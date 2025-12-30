@@ -10,7 +10,7 @@ export const projectTemplate = {
   rate: 6,
   runtime: undefined,
   title: undefined,
-  work_time: 0,
+  work_time: undefined,
   workplace_url: undefined,
 };
 

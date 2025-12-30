@@ -8,6 +8,7 @@ const storageCache = { count: 0, urls: {}, projects: [] };
 let currentProject = null;
 let currentTabId = null;
 let currentUrl = null;
+let hasAddedListeners = false;
 
 async function initStorageCache() {
   const items = await chrome.storage.sync.get([
@@ -21,7 +22,6 @@ async function initStorageCache() {
 
 async function initCurrentProject() {
   await initStorageCache();
-  addListeners();
 
   const activeId = storageCache.lastProjectId;
   if (!activeId) return null;
@@ -31,8 +31,11 @@ async function initCurrentProject() {
 }
 
 initCurrentProject();
+addListeners();
 
 function addListeners() {
+  if (hasAddedListeners) return;
+  hasAddedListeners = true;
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "sync") {
       for (const key in changes) {
@@ -146,7 +149,6 @@ function setProjectUrl(id) {
 function getProjectById(id, url) {
   const projects = storageCache.projects;
   if (url && !projects && id !== "__CONTINUE_PAGE__") {
-    // Create new project; store url and workplaceId
     storeProjects({
       id: id,
       contractor: "Pixelogic Media",
@@ -163,12 +165,18 @@ function storeWorkTime(workTime) {
   try {
     if (!currentProject) return;
 
-    const invoiceAmount = currentProject.invoice_amount;
-    if (workTime !== 0 && invoiceAmount) {
-      currentProject.hourly_rate = calculateHourlyRate(invoiceAmount, workTime);
+    const invoiceAmount = Number(currentProject.invoice_amount);
+    const seconds = Number(workTime);
+
+    if (
+      Number.isFinite(invoiceAmount) &&
+      Number.isFinite(seconds) &&
+      seconds > 0
+    ) {
+      currentProject.hourly_rate = calculateHourlyRate(invoiceAmount, seconds);
     }
-    currentProject.work_time = workTime;
-    console.log("bingus", currentProject);
+
+    currentProject.work_time = seconds;
     storeProjects(currentProject);
   } catch (e) {
     console.error("Failed to set elapsed time:", e);
