@@ -45,12 +45,12 @@ function roundTo(num, precision) {
   return Math.round(num * factor + Number.EPSILON) / factor;
 }
 
-function calculateHourlyRate(invoiceAmount, workTime) {
+export function calculateHourlyRate(invoiceAmount, workTime) {
   const seconds = Number(workTime);
 
-  if (!seconds || seconds <= 0) return undefined;
+  if (!seconds || seconds <= 0) return null;
 
-  const hourlyRate = roundTo(invoiceAmount / seconds / 3600, 2);
+  const hourlyRate = roundTo((invoiceAmount / seconds) * 3600, 2);
 
   return hourlyRate;
 }
@@ -71,9 +71,7 @@ function setId(title, episodeCode) {
   const seasonNum = Number(match[1]);
   const episodeNum = Number(match[2]);
 
-  const paddedEpisode = `E${String(episodeNum).padStart(4, "0")}`;
-
-  return `${title}: Season ${seasonNum}: Episode ${episodeNum}: Episode ${episodeNum} (${paddedEpisode})`;
+  return `${title}: Season ${seasonNum}: Episode ${episodeNum}`;
 }
 
 export function normalizeProjectData(project) {

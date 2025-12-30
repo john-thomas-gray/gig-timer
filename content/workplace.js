@@ -4,6 +4,7 @@ const workplaceListener = (msg, sender, sendResponse) => {
       msg.source === "service-worker.js" &&
       msg.action === "request-workplace-id"
     ) {
+      console.log("working");
       const allElements = document.querySelectorAll("*");
       const continueText =
         "We detected that you recently had an open session for this assignment.";
@@ -18,7 +19,9 @@ const workplaceListener = (msg, sender, sendResponse) => {
 
       const idSpan = document.getElementById("header-full-title");
       const id = idSpan.textContent.trim();
+      console.log("span", id);
       sendResponse({ data: id });
+
       return true;
     }
   } catch (e) {

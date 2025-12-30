@@ -1,6 +1,8 @@
 "use strict";
-import { projectTemplate, PROJECT_FIELDS } from "./utils/constants.js";
+import { projectTemplate } from "./utils/constants.js";
 import { normalizeProjectData } from "./web-accessible-resources/normalization.js";
+import { exportProjectData } from "./exporters/jsonExporter.js";
+import { calculateHourlyRate } from "./web-accessible-resources/normalization.js";
 
 const storageCache = { count: 0, urls: {}, projects: [] };
 let currentProject = null;
@@ -8,7 +10,12 @@ let currentTabId = null;
 let currentUrl = null;
 
 async function initStorageCache() {
-  const items = await chrome.storage.sync.get(["count", "urls", "projects"]);
+  const items = await chrome.storage.sync.get([
+    "count",
+    "urls",
+    "projects",
+    "lastProjectId",
+  ]);
   Object.assign(storageCache, items);
 }
 
@@ -18,7 +25,6 @@ async function initCurrentProject() {
 
   const activeId = storageCache.lastProjectId;
   if (!activeId) return null;
-  console.log("activeId:", activeId);
   currentProject = getProjectById(activeId);
 
   return currentProject;
@@ -32,7 +38,6 @@ function addListeners() {
       for (const key in changes) {
         if (storageCache.hasOwnProperty(key)) {
           storageCache[key] = changes[key].newValue;
-          console.log(`Updated storageCache.${key}:`, storageCache[key]);
         }
       }
     }
@@ -61,7 +66,6 @@ function addListeners() {
       if (workplace && url.includes(workplace)) {
         const id = await getWorkplaceId();
         const project = getProjectById(id);
-
         if (project) {
           currentProject = project;
           chrome.storage.sync.set({ lastProjectId: project.id });
@@ -91,37 +95,13 @@ function addListeners() {
     }
 
     if (msg.action === "export-project-data" && msg.projectId) {
-      exportProjectData(msg.projectId);
+      const projectData = getProjectById(msg.projectId);
+      exportProjectData(projectData);
     }
   });
 }
 
-function exportProjectData(projectId) {
-  const projectData = getProjectById(projectId);
-
-  function safeFilename(value) {
-    return String(value)
-      .trim()
-      .replace(/[\/\\?%*:|"<>]/g, "_");
-  }
-
-  const result = JSON.stringify(projectData);
-  const filename = `${safeFilename(projectData.title)}_${safeFilename(
-    projectData.episode
-  )}`;
-  console.log("snapshot:", JSON.parse(JSON.stringify(projectData)));
-
-  const url = "data:application/json;base64," + btoa(result);
-
-  chrome.downloads.download({
-    url,
-    filename: filename,
-  });
-}
-
 function getCurrentWorktime() {
-  console.log("getCurrentWorktime");
-
   if (!currentProject) {
     console.warn("Current project not found");
   }
@@ -137,7 +117,6 @@ async function getWorkplaceId() {
     });
 
     const id = response.data;
-
     return id;
   } catch (error) {
     console.error("Failed to get workplace ID:", error);
@@ -145,7 +124,7 @@ async function getWorkplaceId() {
   }
 }
 
-async function setProjectUrl(id) {
+function setProjectUrl(id) {
   try {
     if (!currentProject || currentProject.workplace_url) return;
 
@@ -157,14 +136,7 @@ async function setProjectUrl(id) {
       }
       return project;
     });
-
-    chrome.storage.sync.set({ projects: updatedProjects }, () => {
-      console.log(
-        `Updated workplace_url for project ${currentProject.id}:`,
-        currentProject.workplace_url
-      );
-      storageCache.projects = updatedProjects;
-    });
+    storeProjects(updatedProjects);
   } catch (e) {
     console.error("Failed to set project URL:", e);
   }
@@ -172,6 +144,10 @@ async function setProjectUrl(id) {
 
 function getProjectById(id) {
   const projects = storageCache.projects;
+  if (!projects) {
+    // Create new project; store url and workplaceId
+    return;
+  }
   const project = projects.find((p) => p.id === id);
 
   if (project) return project;
@@ -179,21 +155,21 @@ function getProjectById(id) {
 
 function storeWorkTime(workTime) {
   try {
-    const projects = storageCache.projects;
-
     if (!currentProject) return;
-    currentProject.work_time = workTime;
 
-    storeProjects(projects, () => {
-      console.log("Work time saved:", workTime);
-    });
+    const invoiceAmount = currentProject.invoice_amount;
+    if (workTime !== 0 && invoiceAmount) {
+      currentProject.hourly_rate = calculateHourlyRate(invoiceAmount, workTime);
+    }
+    currentProject.work_time = workTime;
+    console.log("bingus", currentProject);
+    storeProjects(currentProject);
   } catch (e) {
     console.error("Failed to set elapsed time:", e);
   }
 }
 
 function initStopwatch() {
-  console.log("initstopwatch");
   try {
     chrome.tabs.sendMessage(currentTabId, {
       action: "init-stopwatch",
@@ -212,7 +188,6 @@ async function setUpAssignmentsPage() {
     response = await chrome.tabs.sendMessage(currentTabId, {
       action: "request-assignments-data",
     });
-    console.log(response);
     if (!response) {
       console.warn("No response from content script");
       return;
@@ -234,16 +209,13 @@ async function setUpAssignmentsPage() {
 function formatAndNormalizeAssignmentData(snapshot) {
   try {
     const newProject = parseAssignmentData(snapshot);
-    console.log("newProjecty", newProject);
     const normalizedProject = newProject.map((project) =>
       normalizeProjectData(project)
     );
-    console.log("normalized", normalizedProject);
     const mergedProjects = mergeProjects(
       storageCache.projects || [],
       normalizedProject
     );
-    console.log("mergey", mergedProjects);
     storeProjects(mergedProjects);
   } catch (error) {
     console.error("Failed to handle assignment snapshot:", error);
@@ -303,10 +275,27 @@ function mergeProjects(existingProjects, newProjects) {
 }
 
 function storeProjects(projects, callback) {
-  storageCache.projects = projects;
+  chrome.storage.sync.get(["projects"], (result) => {
+    let updatedProjects = [];
 
-  chrome.storage.sync.set({ projects }, () => {
-    console.log("Projects saved:", projects);
-    if (callback) callback();
+    if (Array.isArray(projects)) {
+      updatedProjects = projects;
+    } else {
+      const existingProjects = result.projects || [];
+
+      updatedProjects = existingProjects.map((p) =>
+        p.id === projects.id ? projects : p
+      );
+
+      if (!updatedProjects.some((p) => p.id === projects.id)) {
+        updatedProjects.push(projects);
+      }
+    }
+
+    storageCache.projects = updatedProjects;
+
+    chrome.storage.sync.set({ projects: updatedProjects }, () => {
+      if (callback) callback();
+    });
   });
 }

@@ -132,17 +132,12 @@ function checkIdle() {
   }
 }
 
-async function storeElapsedTime(elapsedTime) {
-  try {
-    const response = await chrome.runtime.sendMessage({
-      action: "store-elapsed-time",
-      elapsedTime: elapsedTime,
-      url: window.location.href,
-    });
-    return response.message;
-  } catch (e) {
-    console.error("Failed to store elapsed time:", e);
-  }
+function storeElapsedTime(elapsedTime) {
+  chrome.runtime.sendMessage({
+    action: "store-elapsed-time",
+    elapsedTime,
+    url: window.location.href,
+  });
 }
 
 document.addEventListener("pointermove", monitorUserActions);

@@ -20,13 +20,6 @@
 document.addEventListener("DOMContentLoaded", () => {
   init();
 });
-const exportButton = document.getElementById("exportButton");
-
-document.addEventListener("click", (e) => {
-  exportButton.addEventListener("click", () => {
-    exportProject();
-  });
-});
 
 let existingProjects = [];
 let selectedProject = null;
@@ -35,9 +28,15 @@ let defaultFields;
 async function init() {
   existingProjects = await getStoredProjects();
   await buildUI(existingProjects);
+  const exportButton = document.getElementById("exportButton");
+
   document
     .getElementById("projectSelect")
     .addEventListener("change", onSelectChange);
+
+  exportButton.addEventListener("click", () => {
+    exportProject();
+  });
 }
 
 async function getStoredProjects() {
