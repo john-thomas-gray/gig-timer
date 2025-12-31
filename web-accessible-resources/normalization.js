@@ -3,8 +3,8 @@ export function parseTitleAndEpisode(title) {
     const parts = title.split(":").map((part) => part.trim());
 
     let titleParts = [];
-    let season = null;
-    let episode = null;
+    let season = undefined;
+    let episode = undefined;
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
@@ -23,7 +23,7 @@ export function parseTitleAndEpisode(title) {
 
     const formattedTitle = titleParts.join(": ");
     const episodeFormatted =
-      season && episode ? `S${season}_E${episode}` : null;
+      season && episode ? `S${season}_E${episode}` : undefined;
 
     return { title: formattedTitle, episode: episodeFormatted };
   } catch (e) {
@@ -46,20 +46,20 @@ function roundTo(num, precision) {
 }
 
 export function calculateHourlyRate(invoiceAmount, seconds) {
-  if (!Number.isFinite(seconds) || seconds <= 0) return null;
-  if (!Number.isFinite(invoiceAmount)) return null;
+  if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
+  if (!Number.isFinite(invoiceAmount)) return undefined;
 
-  return roundTo((invoiceAmount / seconds) * 3600, 2);
+  return roundTo((invoiceAmount / seconds) * 3600, 2) ?? undefined;
 }
 
-function calculateInvoiceAmount(rate, runtime) {
+export function calculateInvoiceAmount(rate, runtime) {
   const runtimeRounded = Math.round(Number(runtime) / 60);
   const invoiceAmount = Number(rate) * runtimeRounded;
-  return invoiceAmount;
+  return invoiceAmount ?? undefined;
 }
 
 function setId(title, episodeCode) {
-  if (!title || !episodeCode) return null;
+  if (!title || !episodeCode) return undefined;
   const match = /^S(\d+)_E(\d+)$/.exec(episodeCode);
   if (!match) {
     throw new Error(`Invalid episode format: ${episodeCode}`);
@@ -74,19 +74,19 @@ function setId(title, episodeCode) {
 export function normalizeProjectData(project) {
   try {
     const projectTemplate = {
-      id: null,
-      client: null,
-      contractor: "Pixelogic Media",
-      date_assigned: null,
-      date_due: null,
-      episode: null,
-      hourly_rate: null,
-      invoice_amount: null,
-      rate: 6,
-      runtime: null,
-      title: null,
-      work_time: 0,
-      workplace_url: null,
+      id: undefined,
+      client: undefined,
+      contractor: undefined,
+      date_assigned: undefined,
+      date_due: undefined,
+      episode: undefined,
+      hourly_rate: undefined,
+      invoice_amount: undefined,
+      rate: undefined,
+      runtime: undefined,
+      title: undefined,
+      work_time: undefined,
+      workplace_url: undefined,
     };
 
     const normalizedProject = { ...projectTemplate, ...project };

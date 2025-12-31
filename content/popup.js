@@ -22,7 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 let existingProjects = [];
-let selectedProject = null;
+let selectedProject = undefined;
 let defaultFields;
 
 async function init() {
@@ -122,7 +122,7 @@ function onSelectChange() {
   const projectId = select.value;
 
   selectedProject =
-    existingProjects.find((project) => project.id === projectId) ?? null;
+    existingProjects.find((project) => project.id === projectId) ?? undefined;
   const h2 = document.getElementById("h2");
   h2.textContent = selectedProject ? selectedProject.title : "";
   console.log(selectedProject);

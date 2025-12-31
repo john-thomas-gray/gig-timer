@@ -11,7 +11,7 @@
   "host_permissions": ["*://*/*"],
   "permissions": ["storage", "tabs", "activeTab", "webNavigation", "downloads"],
   "background": {
-    "service_worker": "./service-worker.js",
+    "service_worker": "./background.js",
     "type": "module"
   },
   "content_scripts": [

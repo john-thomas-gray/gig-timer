@@ -1,7 +1,7 @@
 const workplaceListener = (msg, sender, sendResponse) => {
   try {
     if (
-      msg.source === "service-worker.js" &&
+      msg.source === "background.js" &&
       msg.action === "request-workplace-id"
     ) {
       console.log("working");

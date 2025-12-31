@@ -1,7 +1,7 @@
 /* Initialize self. Request existing workTime, await response. Start stopwatch. */
 let initiated = false;
-let stopwatchElement = null;
-let stopwatchInterval = null;
+let stopwatchElement = undefined;
+let stopwatchInterval = undefined;
 let timeSinceLastAction = -1;
 let isIdle = false;
 let elapsedTime = 0;
@@ -12,7 +12,7 @@ let workplaceUrl;
 let settings;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.source === "service-worker.js" && msg.action === "init-stopwatch") {
+  if (msg.source === "background.js" && msg.action === "init-stopwatch") {
     initStopwatch();
   }
 });
