@@ -13,14 +13,13 @@ let settings;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.source === "service-worker.js" && msg.action === "init-stopwatch") {
-    console.log("bing!");
     initStopwatch();
   }
 });
 
 async function getStorage() {
   workplaceUrl = await getWorkplaceUrl();
-  settings = await getSettings();
+  // settings = await getSettings();
 }
 
 async function initStopwatch() {
@@ -40,21 +39,21 @@ async function getWorkplaceUrl() {
   }
 }
 
-async function getSettings() {
-  const defaultSettings = {
-    idle_threshold: 30,
-  };
-  try {
-    const settings = await chrome.storage.sync.get(["settings"]);
-    if (!settings) {
-      settings = defaultSettings;
-      console.warn("Failed to get stopwatch settings. Applied defaults.");
-    }
-    return settings;
-  } catch (e) {
-    console.error("Failed to get stopwatch settings.", e);
-  }
-}
+// async function getSettings() {
+//   const defaultSettings = {
+//     idle_threshold: 30,
+//   };
+//   try {
+//     const settings = await chrome.storage.sync.get(["settings"]);
+//     if (!settings) {
+//       settings = defaultSettings;
+//       console.warn("Failed to get stopwatch settings. Applied defaults.");
+//     }
+//     return settings;
+//   } catch (e) {
+//     console.error("Failed to get stopwatch settings.", e);
+//   }
+// }
 
 function createStopwatchElement() {
   if (!stopwatchElement) {
@@ -112,17 +111,23 @@ async function start() {
     checkIdle();
 
     elapsedTime++;
-    console.log(elapsedTime);
+    autoSave();
+
     updateDisplay(elapsedTime);
   }, 1000);
 }
 
+function autoSave() {
+  if (elapsedTime % 5 === 0) {
+    storeElapsedTime(elapsedTime);
+  }
+}
+
 function checkIdle() {
   if (isIdle) return;
-  console.log("check idle");
   timeSinceLastAction++;
   // const idleThreshold = settings?.idle_threshold;
-  const idleThreshold = 5;
+  const idleThreshold = 60;
   if (timeSinceLastAction > idleThreshold) {
     isIdle = true;
     const adjustedElapsed = Math.max(elapsedTime - timeSinceLastAction, 0);
@@ -145,28 +150,25 @@ document.addEventListener("keypress", monitorUserActions);
 
 function monitorUserActions() {
   if (!initiated) return;
-  const idleThreshold = settings?.idleThreshold ?? 3000;
+  const idleThreshold = settings?.idleThreshold ?? 60000;
   const THROTTLE_MS = idleThreshold * 0.9;
   const now = Date.now();
   if (now - timeSinceLastAction < THROTTLE_MS) {
     return;
   }
-  console.log("monitoring");
 
   timeSinceLastAction = -1;
   if (isIdle) {
-    console.log("start");
     isIdle = false;
     start();
   }
 }
 
 async function pause(seconds) {
-  console.log("paws");
   stopwatchRunning = false;
 
   clearInterval(stopwatchInterval);
-  await storeElapsedTime(elapsedTime);
+  storeElapsedTime(elapsedTime);
 }
 
 function formatTime(seconds) {

@@ -12,7 +12,7 @@ let hasAddedListeners = false;
 /* WARNING: Do not save to public repo */
 const sheetsData = {
   deploymentId:
-    "AKfycbyCzLAwhZwr_wsuRBP5bNhf6EhWnP09yyHIjZEf6j5UIAd_Hch2oYQtntlBuROJTshr",
+    "AKfycbzYBAvjXw5Dpokzx1U2gI9zJZh8UbnBKItOI5sJ8MxS7kLzUmrqLptFuuMHUzDfUSFJTg",
   spreadSheetId: "1LcXPLmbIF7r8zC2z2got9wfbCxAMCRPPd65M4kaRBm0",
   spreadSheetName: "Sheet2",
 };
@@ -75,12 +75,11 @@ function addListeners() {
 
       if (workplace && url.includes(workplace)) {
         const id = await getWorkplaceId();
-        console.log("id:", id);
         const project = getProjectById(id, url);
         if (project) {
           currentProject = project;
           chrome.storage.sync.set({ lastProjectId: project.id });
-          await setProjectUrl(project.id);
+          setProjectUrl(project.id);
           initStopwatch();
         }
       }
@@ -91,6 +90,7 @@ function addListeners() {
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "store-elapsed-time") {
+      console.log("msg,", msg.elapsedTime);
       storeWorkTime(msg.elapsedTime || 0);
       return;
     }
