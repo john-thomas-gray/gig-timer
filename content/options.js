@@ -6,20 +6,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   const submitUrls = document.getElementById("submitURLs");
 
   const { urls = {} } = await chrome.storage.sync.get("urls");
+  // TODO: Replace with a proper backup url in production
+  const devAssignmentsUrl =
+    "https://localization.pixelogicmedia.com/individuals/8587/new_dashboard?english_services=true";
+  const devWorkplaceUrl =
+    "https://localization.pixelogicmedia.com/script_editor/individual/8587/assignments/";
 
-  if (urls?.assignments) {
-    assignmentsInput.value = urls.assignments;
-    assignmentsDisplay.textContent = urls.assignments;
-  } else {
-    console.log("No assignments url found in storage");
-  }
+  assignmentsInput.value = urls.assignments ?? devAssignmentsUrl;
 
-  if (urls?.workplace) {
-    workplaceInput.value = urls.workplace;
-    workplaceDisplay.textContent = urls.workplace;
-  } else {
-    console.log("No workplace url found in storage");
-  }
+  assignmentsDisplay.textContent = assignmentsInput.value;
+
+  workplaceInput.value = urls.workplace ?? devWorkplaceUrl;
+  workplaceDisplay.textContent = workplaceInput.value;
 
   submitUrls.addEventListener("click", async () => {
     const assignments = assignmentsInput?.value;
@@ -60,7 +58,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const dateAssignedInput = document.getElementById("dateAssignedInput");
   if (!dateAssignedInput.value) {
     const today = new Date();
-    const yyyy = String(today.getFullYear);
+    const yyyy = String(today.getFullYear());
     const mm = String(today.getMonth() + 1).padStart(2, "0");
     const dd = String(today.getDate()).padStart(2, "0");
     dateAssignedInput.value = `${yyyy}-${mm}-${dd}`;
@@ -71,16 +69,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     const { projects = [] } = await chrome.storage.sync.get("projects");
     const workplaceUrl = workplaceUrlInput?.value ?? null;
     const existingProject = projects.find(
-      (p) => p.workplaceUrl === workplaceUrl
+      (p) => p.workplaceUrl === workplaceUrl,
     );
 
     const title = titleInput?.value ?? existingProject?.title ?? null;
     const runtime = runtimeInput?.value
       ? Math.round(+runtimeInput.value)
-      : existingProject?.runtime ?? null;
+      : (existingProject?.runtime ?? null);
     const rate = rateInput?.value
       ? +rateInput.value
-      : existingProject?.rate ?? null;
+      : (existingProject?.rate ?? null);
     const contractor =
       contractorInput?.value ?? existingProject?.contractor ?? null;
     const client = clientInput?.value ?? existingProject?.client ?? null;
@@ -89,7 +87,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const invoice_amount =
       runtime != null && rate != null
         ? runtime * rate
-        : existingProject?.invoice_amount ?? null;
+        : (existingProject?.invoice_amount ?? null);
     const work_time = existingProject?.work_time ?? 0;
     const hourlyRate =
       invoice_amount != null && work_time != null

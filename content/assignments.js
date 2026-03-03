@@ -1,4 +1,3 @@
-console.log("assignments");
 const pending = new Map();
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -10,7 +9,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   window.postMessage(
     { source: "assignments.js", type: "REQUEST_W2UI_DATA", id },
-    "*"
+    "*",
   );
 
   return true;

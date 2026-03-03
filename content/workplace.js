@@ -4,12 +4,11 @@ const workplaceListener = (msg, sender, sendResponse) => {
       msg.source === "background.js" &&
       msg.action === "request-workplace-id"
     ) {
-      console.log("working");
       const allElements = document.querySelectorAll("*");
       const continueText =
         "We detected that you recently had an open session for this assignment.";
       const continueElement = Array.from(allElements).find(
-        (el) => el.textContent && el.textContent.includes(continueText)
+        (el) => el.textContent && el.textContent.includes(continueText),
       );
 
       if (continueElement) {
@@ -19,7 +18,7 @@ const workplaceListener = (msg, sender, sendResponse) => {
 
       const idSpan = document.getElementById("header-full-title");
       const id = idSpan.textContent.trim();
-      console.log("span", id);
+      // console.log("ADD A CACHE TO BACKGROUND.JS", id);
       sendResponse({ data: id });
 
       return true;

@@ -1,6 +1,9 @@
 "use strict";
 import { projectTemplate } from "./utils/constants.js";
-import { normalizeProjectData } from "./web-accessible-resources/normalization.js";
+import {
+  normalizeProjectData,
+  normalizeProjectId,
+} from "./web-accessible-resources/normalization.js";
 import { exportProjectData } from "./exporters/sheetsExporter.js";
 import {
   calculateHourlyRate,
@@ -62,10 +65,23 @@ async function addListeners() {
       currentTabId = tabId;
       currentUrl = url;
 
-      const { assignments, workplace } = storageCache.urls;
+      // TODO: Remove this once we have a proper url in production
+      const devAssignmentsUrl =
+        "https://localization.pixelogicmedia.com/individuals/8587/new_dashboard?english_services=true";
+      const devWorkplaceUrl =
+        "https://localization.pixelogicmedia.com/script_editor/individual/8587/assignments/";
+      const { assignments = devAssignmentsUrl, workplace = devWorkplaceUrl } =
+        storageCache.urls ?? {};
+
+      if (!assignments || !workplace) {
+        console.warn(
+          "Missing required assignment and/or workplace url. Set in Options.",
+        );
+      }
 
       if (assignments && url.includes(assignments)) {
         await setUpAssignmentsPage();
+        console.log("Assignments runs");
       }
 
       if (workplace && url.includes(workplace)) {
@@ -76,6 +92,7 @@ async function addListeners() {
           await upsertProjects({ id: id, workplace_url: url });
           initStopwatch();
         }
+        console.log("workplace runs");
       }
     }, DEBOUNCE_MS);
 
@@ -84,6 +101,7 @@ async function addListeners() {
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "store-elapsed-time") {
+      console.log("store-elapsed-time runs");
       (async () => {
         try {
           const workTimeValue = msg.elapsedTime ?? 0;
@@ -92,8 +110,11 @@ async function addListeners() {
           const project = await getProjects(workplaceId);
           const invoiceAmount = calculateInvoiceAmount(
             project.rate,
-            project.runtime
+            project.runtime,
           );
+          if (!workplaceId) {
+            throw new Error("Workplace ID not found");
+          }
           await upsertProjects({
             id: workplaceId,
             work_time: workTimeValue,
@@ -109,8 +130,10 @@ async function addListeners() {
     }
 
     if (msg.action === "get-stored-worktime") {
+      console.log("get-stored-worktime runs");
       getStoredProjectValue("work_time").then((workTime) => {
-        sendResponse(workTime ?? 0);
+        // sendResponse(workTime ?? 0);
+        sendResponse(workTime);
       });
       return true;
     }
@@ -155,7 +178,7 @@ async function createProjectFromTemplate(id) {
 async function getStoredProjectValue(key) {
   try {
     if (!key) throw new Error("Key must be provided");
-
+    console.log("getStoredProjectValue: ", key);
     const id = await getWorkplaceId();
     if (!id) return undefined;
 
@@ -169,22 +192,24 @@ async function getStoredProjectValue(key) {
   }
 }
 
-async function getWorkplaceId() {
+async function getWorkplaceId(calledBy) {
   try {
+    console.log("currentTabId:", currentTabId);
     if (!currentTabId) return undefined;
     const response = await chrome.tabs.sendMessage(currentTabId, {
       action: "request-workplace-id",
       source: "background.js",
     });
+    console.log("response", response);
 
     const id = response.data;
     if (id === "__CONTINUE_PAGE__") {
       console.log("Handled Continue page.");
       return;
     }
-    return id;
+    return normalizeProjectId(id);
   } catch (e) {
-    console.error("Failed to get workplace ID:", e);
+    console.error(`${calledBy ?? "We"} failed to get workplace ID:`, e);
     return undefined;
   }
 }
@@ -195,6 +220,7 @@ function initStopwatch() {
       action: "init-stopwatch",
       source: "background.js",
     });
+    console.log("sent init stopwatch");
   } catch (e) {
     console.error("Failed to initiate stopwatch:", e);
   }
@@ -214,7 +240,7 @@ async function setUpAssignmentsPage() {
     }
     if (response.type === "W2UI_DATA_ERROR") {
       throw new Error(
-        `Error getting W2UI assignments data. Reason: ${response.payload.reason}. Current state: ${response.payload.state}`
+        `Error getting W2UI assignments data. Reason: ${response.payload.reason}. Current state: ${response.payload.state}`,
       );
     }
     if (response.type === "RETURN_W2UI_DATA") {
@@ -230,7 +256,7 @@ async function formatAndNormalizeAssignmentData(snapshot) {
   try {
     const newProject = parseAssignmentData(snapshot);
     const normalizedProject = newProject.map((project) =>
-      normalizeProjectData(project)
+      normalizeProjectData(project),
     );
     await upsertProjects(normalizedProject);
   } catch (e) {
@@ -262,7 +288,7 @@ function parseAssignmentData(snapshot) {
     });
 
     projectWithConvertedKeys["runtime"] = Math.round(
-      object.alpha_source_materials?.[0]?.program_runtime || 0
+      object.alpha_source_materials?.[0]?.program_runtime || 0,
     );
     return projectWithConvertedKeys;
   });
@@ -290,6 +316,7 @@ async function upsertProjects(projects) {
       updatedProjects.push(project);
     }
   });
+  console.log("updatedProjects", updatedProjects);
 
   await chrome.storage.sync.set({ projects: updatedProjects });
 }

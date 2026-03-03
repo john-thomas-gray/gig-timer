@@ -58,7 +58,7 @@ export function calculateInvoiceAmount(rate, runtime) {
   return invoiceAmount ?? undefined;
 }
 
-function setId(title, episodeCode) {
+function normalizeId(title, episodeCode) {
   if (!title || !episodeCode) return undefined;
   const match = /^S(\d+)_E(\d+)$/.exec(episodeCode);
   if (!match) {
@@ -67,33 +67,46 @@ function setId(title, episodeCode) {
 
   const seasonNum = Number(match[1]);
   const episodeNum = Number(match[2]);
-
-  return `${title}: Season ${seasonNum}: Episode ${episodeNum}`;
+  const episodeLooksSeasonPrefixed =
+    episodeNum >= 100 && Math.trunc(episodeNum / 100) === seasonNum;
+  const normalizedEpisodeNum = episodeLooksSeasonPrefixed
+    ? episodeNum % 100 || episodeNum
+    : episodeNum;
+  return `${title}: Season ${seasonNum}: Episode ${normalizedEpisodeNum}`;
 }
+
+export function normalizeProjectId(rawId) {
+  if (!rawId) return undefined;
+  const { title, episode } = parseTitleAndEpisode(rawId);
+  return normalizeId(title, episode);
+}
+
+const projectTemplate = {
+  id: undefined,
+  client: undefined,
+  contractor: undefined,
+  date_assigned: undefined,
+  date_due: undefined,
+  episode: undefined,
+  hourly_rate: undefined,
+  invoice_amount: undefined,
+  rate: undefined,
+  runtime: undefined,
+  title: undefined,
+  work_time: 0,
+  workplace_url: undefined,
+};
 
 export function normalizeProjectData(project) {
   try {
-    const projectTemplate = {
-      id: undefined,
-      client: undefined,
-      contractor: undefined,
-      date_assigned: undefined,
-      date_due: undefined,
-      episode: undefined,
-      hourly_rate: undefined,
-      invoice_amount: undefined,
-      rate: undefined,
-      runtime: undefined,
-      title: undefined,
-      work_time: undefined,
-      workplace_url: undefined,
+    const normalizedProject = {
+      ...projectTemplate,
+      ...project,
     };
-
-    const normalizedProject = { ...projectTemplate, ...project };
-
+    const workTime = project.work_time ?? projectTemplate.work_time;
     const rate = normalizedProject.rate;
     const runtime = normalizedProject.runtime;
-    const workTime = normalizedProject.work_time ?? 0;
+
     const invoiceAmount = calculateInvoiceAmount(rate, runtime) ?? undefined;
     const { title, episode } = parseTitleAndEpisode(normalizedProject.title);
 
@@ -102,7 +115,7 @@ export function normalizeProjectData(project) {
 
       switch (key) {
         case "id":
-          value = setId(title, episode);
+          value = normalizeId(title, episode);
           break;
 
         case "date_assigned":

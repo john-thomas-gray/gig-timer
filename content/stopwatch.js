@@ -10,7 +10,7 @@ let lastStartCall = 0;
 
 let workplaceUrl;
 let settings;
-
+const formatTimestamp = (ms) => new Date(ms).toLocaleTimeString();
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.source === "background.js" && msg.action === "init-stopwatch") {
     initStopwatch();
@@ -25,6 +25,8 @@ async function getStorage() {
 async function initStopwatch() {
   getStorage();
   start();
+
+  console.log("Stopwatch initiated at", formatTimestamp(Date.now()));
   initiated = true;
 }
 
@@ -92,23 +94,32 @@ async function start() {
   }
   lastStartCall = now;
   stopwatchRunning = true;
-  let storedWorktime = 0;
-
+  let storedWorktime = -1;
   try {
     storedWorktime = await chrome.runtime.sendMessage({
       action: "get-stored-worktime",
       url: window.location.href,
     });
+    console.log("storedWorkTime: ", formatTime(storedWorktime));
   } catch (e) {
     console.error("Unable to get stored workTime", e);
+
+    storedWorktime = elapsedTime;
   }
 
-  elapsedTime = storedWorktime;
+  const numericStoredWorktime = Number(storedWorktime);
+  if (Number.isFinite(numericStoredWorktime) && numericStoredWorktime >= 0) {
+    // Storage writes are async; on resume prefer whichever value is newer.
+    elapsedTime = Math.max(elapsedTime, numericStoredWorktime);
+  } else if (!Number.isFinite(elapsedTime) || elapsedTime < 0) {
+    elapsedTime = 0;
+  }
 
   clearInterval(stopwatchInterval);
   stopwatchInterval = setInterval(() => {
     if (!stopwatchRunning) return;
     checkIdle();
+    if (!stopwatchRunning) return;
 
     elapsedTime++;
     autoSave();
@@ -118,7 +129,7 @@ async function start() {
 }
 
 function autoSave() {
-  if (elapsedTime % 5 === 0) {
+  if (elapsedTime % 30 === 0) {
     storeElapsedTime(elapsedTime);
   }
 }
@@ -127,12 +138,11 @@ function checkIdle() {
   if (isIdle) return;
   timeSinceLastAction++;
   // const idleThreshold = settings?.idle_threshold;
-  const idleThreshold = 60;
+  const idleThreshold = 31;
   if (timeSinceLastAction > idleThreshold) {
     isIdle = true;
-    const adjustedElapsed = Math.max(elapsedTime - timeSinceLastAction, 0);
-    elapsedTime = adjustedElapsed;
-
+    const secondsSinceLastAction = Math.max(timeSinceLastAction, 0);
+    elapsedTime = Math.max(elapsedTime - secondsSinceLastAction, 0);
     pause();
   }
 }
@@ -146,27 +156,30 @@ function storeElapsedTime(elapsedTime) {
 }
 
 document.addEventListener("pointermove", monitorUserActions);
-document.addEventListener("keypress", monitorUserActions);
+document.addEventListener("keydown", monitorUserActions);
 
 function monitorUserActions() {
+  console.log("initiated", initiated);
   if (!initiated) return;
   const idleThreshold = settings?.idleThreshold ?? 60000;
   const THROTTLE_MS = idleThreshold * 0.9;
   const now = Date.now();
   if (now - timeSinceLastAction < THROTTLE_MS) {
+    console.log("early stop");
     return;
   }
 
   timeSinceLastAction = -1;
   if (isIdle) {
+    console.log("unpaused at:", formatTime(elapsedTime));
     isIdle = false;
     start();
   }
 }
 
-async function pause(seconds) {
+async function pause() {
   stopwatchRunning = false;
-
+  console.log("paused at:", formatTime(elapsedTime));
   clearInterval(stopwatchInterval);
   storeElapsedTime(elapsedTime);
 }
