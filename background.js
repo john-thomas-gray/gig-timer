@@ -11,8 +11,7 @@ import {
 } from "./web-accessible-resources/normalization.js";
 
 const storageCache = { count: 0, urls: {}, lastProjectId: "" };
-let currentTabId = undefined;
-let currentUrl = undefined;
+
 let hasAddedListeners = false;
 /* WARNING: Do not save to public repo */
 const sheetsData = {
@@ -62,9 +61,6 @@ async function addListeners() {
     const timer = setTimeout(async () => {
       onCompleteTimers.delete(tabId);
 
-      currentTabId = tabId;
-      currentUrl = url;
-
       // TODO: Remove this once we have a proper url in production
       const devAssignmentsUrl =
         "https://localization.pixelogicmedia.com/individuals/8587/new_dashboard?english_services=true";
@@ -80,17 +76,17 @@ async function addListeners() {
       }
 
       if (assignments && url.includes(assignments)) {
-        await setUpAssignmentsPage();
+        await setUpAssignmentsPage(tabId);
         console.log("Assignments runs");
       }
 
       if (workplace && url.includes(workplace)) {
-        const id = await getWorkplaceId();
+        const id = await getWorkplaceId("webNavigation", tabId);
         if (id) {
           chrome.storage.sync.set({ lastProjectId: id });
           await createProjectFromTemplate(id);
           await upsertProjects({ id: id, workplace_url: url });
-          initStopwatch();
+          initStopwatch(tabId);
         }
         console.log("workplace runs");
       }
@@ -106,11 +102,14 @@ async function addListeners() {
         try {
           const workTimeValue = msg.elapsedTime ?? 0;
 
-          const workplaceId = await getWorkplaceId();
+          const workplaceId = await getWorkplaceId(
+            "store-elapsed-time",
+            sender?.tab?.id,
+          );
           const project = await getProjects(workplaceId);
           const invoiceAmount = calculateInvoiceAmount(
-            project.rate,
-            project.runtime,
+            project?.rate,
+            project?.runtime,
           );
           if (!workplaceId) {
             throw new Error("Workplace ID not found");
@@ -131,7 +130,7 @@ async function addListeners() {
 
     if (msg.action === "get-stored-worktime") {
       console.log("get-stored-worktime runs");
-      getStoredProjectValue("work_time").then((workTime) => {
+      getStoredProjectValue("work_time", sender?.tab?.id).then((workTime) => {
         // sendResponse(workTime ?? 0);
         sendResponse(workTime);
       });
@@ -175,11 +174,11 @@ async function createProjectFromTemplate(id) {
   }
 }
 
-async function getStoredProjectValue(key) {
+async function getStoredProjectValue(key, tabId) {
   try {
     if (!key) throw new Error("Key must be provided");
     console.log("getStoredProjectValue: ", key);
-    const id = await getWorkplaceId();
+    const id = await getWorkplaceId("getStoredProjectValue", tabId);
     if (!id) return undefined;
 
     const currentProject = await getProjects(id);
@@ -192,31 +191,37 @@ async function getStoredProjectValue(key) {
   }
 }
 
-async function getWorkplaceId(calledBy) {
+async function getWorkplaceId(calledBy, tabIdOverride) {
   try {
-    console.log("currentTabId:", currentTabId);
-    if (!currentTabId) return undefined;
-    const response = await chrome.tabs.sendMessage(currentTabId, {
+    const targetTabId = tabIdOverride;
+    console.log("targetTabId:", targetTabId);
+    if (!targetTabId) return storageCache.lastProjectId || undefined;
+    const response = await chrome.tabs.sendMessage(targetTabId, {
       action: "request-workplace-id",
       source: "background.js",
     });
     console.log("response", response);
 
-    const id = response.data;
+    const id = response?.data;
+    if (!id) {
+      return storageCache.lastProjectId || undefined;
+    }
     if (id === "__CONTINUE_PAGE__") {
       console.log("Handled Continue page.");
       return;
     }
-    return normalizeProjectId(id);
+    const normalizedId = normalizeProjectId(id);
+    return normalizedId ?? (storageCache.lastProjectId || undefined);
   } catch (e) {
     console.error(`${calledBy ?? "We"} failed to get workplace ID:`, e);
-    return undefined;
+    return storageCache.lastProjectId || undefined;
   }
 }
 
-function initStopwatch() {
+function initStopwatch(tabId) {
   try {
-    chrome.tabs.sendMessage(currentTabId, {
+    if (!tabId) return;
+    chrome.tabs.sendMessage(tabId, {
       action: "init-stopwatch",
       source: "background.js",
     });
@@ -228,10 +233,11 @@ function initStopwatch() {
 
 // Assignments
 
-async function setUpAssignmentsPage() {
+async function setUpAssignmentsPage(tabId) {
   let response;
   try {
-    response = await chrome.tabs.sendMessage(currentTabId, {
+    if (!tabId) return;
+    response = await chrome.tabs.sendMessage(tabId, {
       action: "request-assignments-data",
     });
     if (!response) {
