@@ -16,7 +16,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*/*"],
+      "matches": ["*://localization.pixelogicmedia.com/*"],
       "js": [
         "content/inject-bridge.js",
         "content/stopwatch.js",
