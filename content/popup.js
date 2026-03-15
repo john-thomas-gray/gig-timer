@@ -46,7 +46,7 @@ async function getStoredProjects() {
       (response) => {
         if (Array.isArray(response)) resolve(response);
         else resolve([]);
-      }
+      },
     );
   });
 }
@@ -137,7 +137,7 @@ function formatFieldLabel(key) {
   return key
     .split("_")
     .map(
-      (word) => overrides[word] ?? word.charAt(0).toUpperCase() + word.slice(1)
+      (word) => overrides[word] ?? word.charAt(0).toUpperCase() + word.slice(1),
     )
     .join(" ");
 }
@@ -146,6 +146,44 @@ function formatFieldLabel(key) {
 function roundTo(num, precision) {
   const factor = Math.pow(10, precision);
   return Math.round(num * factor + Number.EPSILON) / factor;
+}
+
+function formatCurrency(value) {
+  const num = Number(value);
+  if (isNaN(num)) return value;
+  return "$" + num.toFixed(2);
+}
+
+function formatHourlyRate(value) {
+  const num = Number(value);
+  if (isNaN(num)) return value;
+  return "$" + num.toFixed(2) + "/hr";
+}
+
+function formatRate(value) {
+  const num = Number(value);
+  if (isNaN(num)) return value;
+  return "$" + num.toFixed(2) + "/min";
+}
+
+function formatTime(value) {
+  const totalSeconds = Number(value);
+  if (isNaN(totalSeconds)) return value;
+
+  const days = Math.floor(totalSeconds / 86400)
+    .toString()
+    .padStart(2, "0");
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+    .toString()
+    .padStart(2, "0");
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = Math.floor(totalSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+
+  return `${days}:${hours}:${minutes}:${seconds}`;
 }
 
 function setFormText() {
@@ -171,7 +209,11 @@ function setFormText() {
     const key = input.name;
     let value = selectedProject[key];
 
-    value = value;
+    if (key === "runtime") value = formatTime(value);
+    if (key === "rate") value = formatRate(value);
+    if (key === "hourly_rate") value = formatHourlyRate(value);
+    if (key === "invoice_amount") value = formatCurrency(value);
+    if (key === "work_time") value = formatTime(value);
     console.log(value);
     input.value = value ?? "";
   }
