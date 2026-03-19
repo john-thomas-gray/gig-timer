@@ -14,13 +14,6 @@ import {
 const storageCache = { count: 0, urls: {}, lastProjectId: "" };
 
 let hasAddedListeners = false;
-/* WARNING: Do not save to public repo */
-const sheetsData = {
-  deploymentId:
-    "AKfycbzYBAvjXw5Dpokzx1U2gI9zJZh8UbnBKItOI5sJ8MxS7kLzUmrqLptFuuMHUzDfUSFJTg",
-  spreadSheetId: "1LcXPLmbIF7r8zC2z2got9wfbCxAMCRPPd65M4kaRBm0",
-  spreadSheetName: "Sheet2",
-};
 
 init();
 
