@@ -2,7 +2,8 @@
 import { projectTemplate } from "./utils/constants.js";
 import {
   normalizeProjectData,
-  normalizeProjectId,
+  parseTitleAndEpisode,
+  parseRawProjectId,
 } from "./web-accessible-resources/normalization.js";
 import { exportProjectData } from "./exporters/sheetsExporter.js";
 import {
@@ -164,9 +165,15 @@ async function getProjects(id) {
 
 async function createProjectFromTemplate(id) {
   try {
+    const existingProject = await getProjects(id);
+    if (existingProject) return;
+    const { title, episode } = parseTitleAndEpisode(id);
+
     const projectData = {
       ...projectTemplate,
       id,
+      title,
+      episode,
     };
     await upsertProjects(projectData);
   } catch (e) {
@@ -210,7 +217,7 @@ async function getWorkplaceId(calledBy, tabIdOverride) {
       console.log("Handled Continue page.");
       return;
     }
-    const normalizedId = normalizeProjectId(id);
+    const normalizedId = parseRawProjectId(id);
     return normalizedId ?? (storageCache.lastProjectId || undefined);
   } catch (e) {
     console.error(`${calledBy ?? "We"} failed to get workplace ID:`, e);

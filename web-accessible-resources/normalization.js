@@ -58,27 +58,90 @@ export function calculateInvoiceAmount(rate, runtime) {
   return invoiceAmount ?? undefined;
 }
 
-function normalizeId(title, episodeCode) {
-  if (!title || !episodeCode) return undefined;
-  const match = /^S(\d+)_E(\d+)$/.exec(episodeCode);
-  if (!match) {
-    throw new Error(`Invalid episode format: ${episodeCode}`);
+export function normalizeDurationInput(value) {
+  if (value === undefined || value === null) return undefined;
+  const trimmed = String(value).trim();
+  if (!trimmed) return undefined;
+
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    return Math.round(Number(trimmed));
   }
 
-  const seasonNum = Number(match[1]);
-  const episodeNum = Number(match[2]);
-  const episodeLooksSeasonPrefixed =
-    episodeNum >= 100 && Math.trunc(episodeNum / 100) === seasonNum;
-  const normalizedEpisodeNum = episodeLooksSeasonPrefixed
-    ? episodeNum % 100 || episodeNum
-    : episodeNum;
-  return `${title}: Season ${seasonNum}: Episode ${normalizedEpisodeNum}`;
+  const parts = trimmed.split(":");
+  if (parts.length !== 4 || parts.some((part) => !/^\d+$/.test(part))) {
+    return undefined;
+  }
+
+  const [days, hours, minutes, seconds] = parts.map((part) => Number(part));
+  return days * 86400 + hours * 3600 + minutes * 60 + seconds;
 }
 
-export function normalizeProjectId(rawId) {
+export function normalizeMoneyInput(value) {
+  if (value === undefined || value === null) return undefined;
+  const trimmed = String(value).trim();
+  if (!trimmed) return undefined;
+
+  const numericString = trimmed.replace(/[^0-9.-]/g, "");
+  if (!numericString) return undefined;
+
+  const parsed = Number(numericString);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function normalizeRatePerMinuteInput(value) {
+  return normalizeMoneyInput(value);
+}
+
+export function normalizeHourlyRateInput(value) {
+  return normalizeMoneyInput(value);
+}
+
+export function normalizeDateInput(value) {
+  if (value === undefined || value === null) return undefined;
+  const trimmed = String(value).trim();
+  if (!trimmed) return undefined;
+
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return normalizeDate(trimmed);
+}
+
+export function normalizeEpisodeInput(value) {
+  if (value === undefined || value === null) return undefined;
+  const trimmed = String(value).trim();
+  if (!trimmed) return undefined;
+  const match = /^S(\d+)_E(\d+)$/.exec(trimmed);
+  if (!match) return undefined;
+  return `S${Number(match[1])}_E${Number(match[2])}`;
+}
+
+export function buildProjectIdFromTitleAndEpisode(title, episodeCode) {
+  if (!title || !episodeCode) return undefined;
+  try {
+    const normalizedTitle = String(title).trim();
+    const normalizedEpisodeCode = String(episodeCode).trim();
+    if (!normalizedTitle || !normalizedEpisodeCode) return undefined;
+
+    const match = /^S(\d+)_E(\d+)$/.exec(normalizedEpisodeCode);
+    if (!match) return undefined;
+
+    const seasonNum = Number(match[1]);
+    const episodeNum = Number(match[2]);
+    const episodeLooksSeasonPrefixed =
+      episodeNum >= 100 && Math.trunc(episodeNum / 100) === seasonNum;
+    const normalizedEpisodeNum = episodeLooksSeasonPrefixed
+      ? episodeNum % 100 || episodeNum
+      : episodeNum;
+    return `${normalizedTitle}: Season ${seasonNum}: Episode ${normalizedEpisodeNum}`;
+  } catch {
+    return undefined;
+  }
+}
+
+export function parseRawProjectId(rawId) {
   if (!rawId) return undefined;
   const { title, episode } = parseTitleAndEpisode(rawId);
-  return normalizeId(title, episode);
+  return buildProjectIdFromTitleAndEpisode(title, episode);
 }
 
 const projectTemplate = {
@@ -115,7 +178,7 @@ export function normalizeProjectData(project) {
 
       switch (key) {
         case "id":
-          value = normalizeId(title, episode);
+          value = buildProjectIdFromTitleAndEpisode(title, episode);
           break;
 
         case "date_assigned":

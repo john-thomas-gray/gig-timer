@@ -1,16 +1,16 @@
 // import(chrome.runtime.getURL("web-accessible-resources/normalization.js")).then(
 // );
 
-// let normalizationModule;
+let normalizationModule;
 
-// async function loadNormalizationModule() {
-//   if (!normalizationModule) {
-//     normalizationModule = await import(
-//       chrome.runtime.getURL("web-accessible-resources/normalization.js")
-//     );
-//   }
-//   return normalizationModule;
-// }
+async function loadNormalizationModule() {
+  if (!normalizationModule) {
+    normalizationModule = await import(
+      chrome.runtime.getURL("web-accessible-resources/normalization.js"),
+    );
+  }
+  return normalizationModule;
+}
 
 // async function formatDisplayRatePpm() {
 //   const module = await loadNormalizationModule();
@@ -29,6 +29,7 @@ async function init() {
   existingProjects = await getStoredProjects();
   await buildUI(existingProjects);
   const exportButton = document.getElementById("exportButton");
+  const updateButton = document.getElementById("updateButton");
 
   document
     .getElementById("projectSelect")
@@ -36,6 +37,10 @@ async function init() {
 
   exportButton.addEventListener("click", () => {
     exportProject();
+  });
+
+  updateButton.addEventListener("click", async () => {
+    await updateProjectFromForm();
   });
 }
 
@@ -216,6 +221,96 @@ function setFormText() {
     if (key === "work_time") value = formatTime(value);
     console.log(value);
     input.value = value ?? "";
+  }
+}
+
+function collectFormValues() {
+  const values = {};
+  if (!defaultFields) return values;
+
+  for (const inputGroup of defaultFields.children) {
+    const input = inputGroup.querySelector("input");
+    if (!input) continue;
+    values[input.name] = input.value;
+  }
+
+  return values;
+}
+
+async function normalizeFormValues(rawValues) {
+  const module = await loadNormalizationModule();
+  const normalized = {
+    title: rawValues.title?.trim() || undefined,
+    contractor: rawValues.contractor?.trim() || undefined,
+    client: rawValues.client?.trim() || undefined,
+    workplace_url: rawValues.workplace_url?.trim() || undefined,
+    episode: module.normalizeEpisodeInput(rawValues.episode),
+    date_assigned: module.normalizeDateInput(rawValues.date_assigned),
+    date_due: module.normalizeDateInput(rawValues.date_due),
+    runtime: module.normalizeDurationInput(rawValues.runtime),
+    work_time: module.normalizeDurationInput(rawValues.work_time),
+    rate: module.normalizeRatePerMinuteInput(rawValues.rate),
+  };
+
+  const manualInvoiceAmount = module.normalizeMoneyInput(rawValues.invoice_amount);
+  const manualHourlyRate = module.normalizeHourlyRateInput(rawValues.hourly_rate);
+  const calculatedInvoiceAmount = module.calculateInvoiceAmount(
+    normalized.rate,
+    normalized.runtime,
+  );
+  const invoiceAmount = calculatedInvoiceAmount ?? manualInvoiceAmount;
+
+  normalized.invoice_amount = invoiceAmount;
+  normalized.hourly_rate =
+    module.calculateHourlyRate(invoiceAmount, normalized.work_time) ??
+    manualHourlyRate;
+
+  return normalized;
+}
+
+async function updateProjectFromForm() {
+  try {
+    const rawValues = collectFormValues();
+    const normalizedValues = await normalizeFormValues(rawValues);
+    const module = await loadNormalizationModule();
+
+    const projectToSave = {
+      ...(selectedProject ?? {}),
+      ...normalizedValues,
+    };
+
+    projectToSave.id =
+      selectedProject?.id ??
+      module.normalizeId(
+        projectToSave.title,
+        projectToSave.episode,
+      );
+
+    if (!projectToSave.id) {
+      console.warn(
+        "Could not save project. A valid id is required (select project or provide title + S#_E#).",
+      );
+      return;
+    }
+
+    const result = await chrome.storage.sync.get("projects");
+    const projects = Array.isArray(result.projects) ? result.projects : [];
+    const existingIndex = projects.findIndex(
+      (project) => project.id === projectToSave.id,
+    );
+
+    if (existingIndex >= 0) {
+      projects[existingIndex] = { ...projects[existingIndex], ...projectToSave };
+    } else {
+      projects.push(projectToSave);
+    }
+
+    await chrome.storage.sync.set({ projects });
+    existingProjects = projects;
+    selectedProject = projectToSave;
+    setFormText();
+  } catch (error) {
+    console.error("Failed to update project from popup form:", error);
   }
 }
 
