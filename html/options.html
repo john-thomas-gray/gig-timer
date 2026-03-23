@@ -20,6 +20,48 @@
       <input type="button" value="Save" id="submitURLs" name="submitURLs" />
     </div>
 
+    <div>
+      <h2>Google Sheets export</h2>
+      <p>
+        From your Apps Script deployment: use the web app URL’s <code>/exec</code>
+        path segment as <strong>Deployment ID</strong> (the part after
+        <code>/macros/s/</code> and before <code>/exec</code>).
+      </p>
+      <div class="input-group">
+        <label for="sheetsDeploymentId">Deployment ID</label>
+        <input
+          type="text"
+          id="sheetsDeploymentId"
+          name="sheetsDeploymentId"
+          autocomplete="off"
+        />
+      </div>
+      <div class="input-group">
+        <label for="sheetsSpreadSheetId">Spreadsheet ID</label>
+        <input
+          type="text"
+          id="sheetsSpreadSheetId"
+          name="sheetsSpreadSheetId"
+          autocomplete="off"
+        />
+      </div>
+      <div class="input-group">
+        <label for="sheetsSpreadSheetName">Sheet name (tab)</label>
+        <input
+          type="text"
+          id="sheetsSpreadSheetName"
+          name="sheetsSpreadSheetName"
+          autocomplete="off"
+        />
+      </div>
+      <input
+        type="button"
+        value="Save Google Sheets settings"
+        id="submitSheets"
+        name="submitSheets"
+      />
+    </div>
+
     <label for="projectSelect">Choose an existing project</label>
 
     <select name="projectSelect" id="projectSelect">

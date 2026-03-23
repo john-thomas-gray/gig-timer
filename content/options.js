@@ -33,6 +33,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  const sheetsDeploymentId = document.getElementById("sheetsDeploymentId");
+  const sheetsSpreadSheetId = document.getElementById("sheetsSpreadSheetId");
+  const sheetsSpreadSheetName = document.getElementById("sheetsSpreadSheetName");
+  const submitSheets = document.getElementById("submitSheets");
+
+  const { sheetsData = {} } = await chrome.storage.sync.get("sheetsData");
+  sheetsDeploymentId.value = sheetsData.deploymentId ?? "";
+  sheetsSpreadSheetId.value = sheetsData.spreadSheetId ?? "";
+  sheetsSpreadSheetName.value = sheetsData.spreadSheetName ?? "";
+
+  submitSheets.addEventListener("click", async () => {
+    const deploymentId = sheetsDeploymentId?.value?.trim() ?? "";
+    const spreadSheetId = sheetsSpreadSheetId?.value?.trim() ?? "";
+    const spreadSheetName = sheetsSpreadSheetName?.value?.trim() ?? "";
+    const next = { deploymentId, spreadSheetId, spreadSheetName };
+    try {
+      await chrome.storage.sync.set({ sheetsData: next });
+      console.log("Saved Google Sheets settings");
+    } catch (error) {
+      console.error("Error saving Google Sheets settings:", error);
+    }
+  });
+
   const projectTemplate = {
     id: undefined,
     client: undefined,

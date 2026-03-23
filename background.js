@@ -139,9 +139,32 @@ async function addListeners() {
     }
 
     if (msg.action === "export-project-data" && msg.projectId) {
-      getProjects(msg.projectId).then((projectData) => {
-        exportProjectData(projectData, sheetsData);
-      });
+      (async () => {
+        try {
+          const projectData = await getProjects(msg.projectId);
+          const { sheetsData } = await chrome.storage.sync.get("sheetsData");
+          if (!projectData) {
+            console.warn(
+              "export-project-data: no project for id",
+              msg.projectId,
+            );
+            return;
+          }
+          if (
+            !sheetsData?.deploymentId ||
+            !sheetsData?.spreadSheetId ||
+            !sheetsData?.spreadSheetName
+          ) {
+            console.warn(
+              "export-project-data: set chrome.storage.sync.sheetsData with deploymentId, spreadSheetId, spreadSheetName",
+            );
+            return;
+          }
+          await exportProjectData(projectData, sheetsData);
+        } catch (e) {
+          console.error("export-project-data failed:", e);
+        }
+      })();
       return true;
     }
   });
