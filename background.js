@@ -13,6 +13,13 @@ import {
 
 const storageCache = { count: 0, urls: {}, lastProjectId: "" };
 
+const sheetsData = {
+  deploymentId:
+    "AKfycbzYBAvjXw5Dpokzx1U2gI9zJZh8UbnBKItOI5sJ8MxS7kLzUmrqLptFuuMHUzDfUSFJTg",
+  spreadSheetId: "1LcXPLmbIF7r8zC2z2got9wfbCxAMCRPPd65M4kaRBm0",
+  spreadSheetName: "Sheet2",
+};
+
 let hasAddedListeners = false;
 
 init();
@@ -138,35 +145,9 @@ async function addListeners() {
       return true;
     }
 
-    if (msg.action === "export-project-data" && msg.projectId) {
-      (async () => {
-        try {
-          const projectData = await getProjects(msg.projectId);
-          const { sheetsData } = await chrome.storage.sync.get("sheetsData");
-          if (!projectData) {
-            console.warn(
-              "export-project-data: no project for id",
-              msg.projectId,
-            );
-            return;
-          }
-          if (
-            !sheetsData?.deploymentId ||
-            !sheetsData?.spreadSheetId ||
-            !sheetsData?.spreadSheetName
-          ) {
-            console.warn(
-              "export-project-data: set chrome.storage.sync.sheetsData with deploymentId, spreadSheetId, spreadSheetName",
-            );
-            return;
-          }
-          await exportProjectData(projectData, sheetsData);
-        } catch (e) {
-          console.error("export-project-data failed:", e);
-        }
-      })();
-      return true;
-    }
+    getProjects(msg.projectId).then((projectData) => {
+      exportProjectData(projectData, sheetsData);
+    });
   });
 }
 async function getProjects(id) {
