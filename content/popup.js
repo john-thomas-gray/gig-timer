@@ -147,12 +147,6 @@ function formatFieldLabel(key) {
     .join(" ");
 }
 
-// Should be a util
-function roundTo(num, precision) {
-  const factor = Math.pow(10, precision);
-  return Math.round(num * factor + Number.EPSILON) / factor;
-}
-
 function formatCurrency(value) {
   const num = Number(value);
   if (isNaN(num)) return value;
@@ -201,8 +195,7 @@ function setFormText() {
     }
     return;
   }
-  console.log("selectedProject".selectedProject);
-
+  
   for (const inputGroup of defaultFields.children) {
     const input = inputGroup.querySelector("input");
     if (!input) continue;
@@ -281,7 +274,7 @@ async function updateProjectFromForm() {
 
     projectToSave.id =
       selectedProject?.id ??
-      module.normalizeId(
+      module.buildProjectIdFromTitleAndEpisode(
         projectToSave.title,
         projectToSave.episode,
       );
@@ -316,7 +309,7 @@ async function updateProjectFromForm() {
 
 function exportProject() {
   console.log("sending...", selectedProject);
-  if (!selectedProject.id) {
+  if (!selectedProject?.id) {
     console.warn("Project doesn't have an id");
     return;
   }

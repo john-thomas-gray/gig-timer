@@ -97,6 +97,8 @@ async function addListeners() {
   });
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!msg?.action) return;
+
     if (msg.action === "store-elapsed-time") {
       console.log("store-elapsed-time runs");
       (async () => {
@@ -125,14 +127,12 @@ async function addListeners() {
           console.error("Failed to store elapsed time", e);
         }
       })();
-
       return;
     }
 
     if (msg.action === "get-stored-worktime") {
       console.log("get-stored-worktime runs");
       getStoredProjectValue("work_time", sender?.tab?.id).then((workTime) => {
-        // sendResponse(workTime ?? 0);
         sendResponse(workTime);
       });
       return true;
@@ -145,9 +145,11 @@ async function addListeners() {
       return true;
     }
 
-    getProjects(msg.projectId).then((projectData) => {
-      exportProjectData(projectData, sheetsData);
-    });
+    if (msg.action === "export-project-data" && msg.source === "popup.js") {
+      getProjects(msg.projectId).then((projectData) => {
+        exportProjectData(projectData, sheetsData);
+      });
+    }
   });
 }
 async function getProjects(id) {
