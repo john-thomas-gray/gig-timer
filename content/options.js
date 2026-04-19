@@ -56,21 +56,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  const projectTemplate = {
-    id: undefined,
-    client: undefined,
-    contractor: "Pixelogic Media",
-    dateAssigned: undefined,
-    dateDue: undefined,
-    episode: undefined,
-    hourlyRate: undefined,
-    invoice_amount: undefined,
-    rate: 6,
-    runtime: undefined,
-    title: undefined,
-    work_time: 0,
-  };
-
   const submitNewProject = document.getElementById("submitNewProject");
   const titleInput = document.getElementById("titleInput");
   const runtimeInput = document.getElementById("runtimeInput");
@@ -92,7 +77,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const { projects = [] } = await chrome.storage.sync.get("projects");
     const workplaceUrl = workplaceUrlInput?.value ?? null;
     const existingProject = projects.find(
-      (p) => p.workplaceUrl === workplaceUrl,
+      (p) => p.workplace_url === workplaceUrl,
     );
 
     const title = titleInput?.value ?? existingProject?.title ?? null;
@@ -106,7 +91,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       contractorInput?.value ?? existingProject?.contractor ?? null;
     const client = clientInput?.value ?? existingProject?.client ?? null;
     const date_assigned =
-      dateAssignedInput?.value ?? existingProject?.dateAssigned ?? null;
+      dateAssignedInput?.value ?? existingProject?.date_assigned ?? null;
     const invoice_amount =
       runtime != null && rate != null
         ? runtime * rate
@@ -124,9 +109,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       contractor,
       client,
       workplace_url: workplaceUrl,
-      date_assigned: dateAssigned,
-      invoice_amount: invoice_amount,
-      work_time: work_time,
+      date_assigned,
+      invoice_amount,
+      work_time,
       hourly_rate: hourlyRate,
     };
 
