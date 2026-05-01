@@ -62,26 +62,22 @@ async function addListeners() {
     const timer = setTimeout(async () => {
       onCompleteTimers.delete(tabId);
 
-      // TODO: Remove this once we have a proper url in production
-      const devAssignmentsUrl =
-        "https://localization.pixelogicmedia.com/individuals/8587/new_dashboard?english_services=true";
-      const devWorkplaceUrl =
-        "https://localization.pixelogicmedia.com/script_editor/individual/8587/assignments/";
-      const { assignments = devAssignmentsUrl, workplace = devWorkplaceUrl } =
-        storageCache.urls ?? {};
+      const assignments = storageCache.urls?.assignments?.trim();
+      const workplace = storageCache.urls?.workplace?.trim();
 
       if (!assignments || !workplace) {
         console.warn(
           "Missing required assignment and/or workplace url. Set in Options.",
         );
+        return;
       }
 
-      if (assignments && url.includes(assignments)) {
+      if (url.includes(assignments)) {
         await setUpAssignmentsPage(tabId);
         console.log("Assignments runs");
       }
 
-      if (workplace && url.includes(workplace)) {
+      if (url.includes(workplace)) {
         const id = await getWorkplaceId("webNavigation", tabId);
         if (id) {
           chrome.storage.sync.set({ lastProjectId: id });
@@ -202,6 +198,9 @@ async function getWorkplaceId(calledBy, tabIdOverride) {
     const targetTabId = tabIdOverride;
     console.log("targetTabId:", targetTabId);
     if (!targetTabId) return storageCache.lastProjectId || undefined;
+    const tab = await chrome.tabs.get(targetTabId);
+    const tabUrl = tab?.url;
+
     const response = await chrome.tabs.sendMessage(targetTabId, {
       action: "request-workplace-id",
       source: "background.js",
@@ -210,16 +209,24 @@ async function getWorkplaceId(calledBy, tabIdOverride) {
 
     const id = response?.data;
     if (!id) {
-      return storageCache.lastProjectId || undefined;
+      return tabUrl ?? (storageCache.lastProjectId || undefined);
     }
     if (id === "__CONTINUE_PAGE__") {
       console.log("Handled Continue page.");
       return;
     }
     const normalizedId = parseRawProjectId(id);
-    return normalizedId ?? (storageCache.lastProjectId || undefined);
+    return normalizedId ?? id ?? tabUrl ?? (storageCache.lastProjectId || undefined);
   } catch (e) {
     console.error(`${calledBy ?? "We"} failed to get workplace ID:`, e);
+    if (tabIdOverride) {
+      try {
+        const tab = await chrome.tabs.get(tabIdOverride);
+        if (tab?.url) return tab.url;
+      } catch (tabError) {
+        console.error("Fallback tab URL lookup failed:", tabError);
+      }
+    }
     return storageCache.lastProjectId || undefined;
   }
 }

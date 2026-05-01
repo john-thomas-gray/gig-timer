@@ -10,4 +10,17 @@ function injectBridge() {
   }
 }
 
-injectBridge();
+async function initBridgeInjection() {
+  const { urls = {} } = await chrome.storage.sync.get("urls");
+  const assignments = urls.assignments?.trim();
+  const workplace = urls.workplace?.trim();
+  const currentUrl = window.location.href;
+  const shouldRun =
+    (assignments && currentUrl.includes(assignments)) ||
+    (workplace && currentUrl.includes(workplace));
+
+  if (!shouldRun) return;
+  injectBridge();
+}
+
+initBridgeInjection();

@@ -13,11 +13,24 @@ let lastActionAt = Date.now();
 
 const formatTimestamp = (ms) => new Date(ms).toLocaleTimeString();
 
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.source === "background.js" && msg.action === "init-stopwatch") {
-    initStopwatch();
+async function initStopwatchScript() {
+  const { urls = {} } = await chrome.storage.sync.get("urls");
+  const workplace = urls.workplace?.trim();
+  if (!workplace || !window.location.href.includes(workplace)) {
+    return;
   }
-});
+
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.source === "background.js" && msg.action === "init-stopwatch") {
+      initStopwatch();
+    }
+  });
+
+  document.addEventListener("pointermove", monitorUserActions);
+  document.addEventListener("keydown", monitorUserActions);
+}
+
+initStopwatchScript();
 
 async function initStopwatch() {
   await start();
@@ -116,9 +129,6 @@ function storeElapsedTime(nextElapsedTime) {
     url: window.location.href,
   });
 }
-
-document.addEventListener("pointermove", monitorUserActions);
-document.addEventListener("keydown", monitorUserActions);
 
 function monitorUserActions() {
   if (!initiated) return;

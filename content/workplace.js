@@ -17,7 +17,7 @@ const workplaceListener = (msg, sender, sendResponse) => {
       }
 
       const idSpan = document.getElementById("header-full-title");
-      const id = idSpan.textContent.trim();
+      const id = idSpan?.textContent?.trim() || window.location.href;
       // console.log("ADD A CACHE TO BACKGROUND.JS", id);
       sendResponse({ data: id });
 
@@ -27,4 +27,14 @@ const workplaceListener = (msg, sender, sendResponse) => {
     console.error("Cannot retreive workplaceId:", e);
   }
 };
-chrome.runtime.onMessage.addListener(workplaceListener);
+
+async function initWorkplaceListener() {
+  const { urls = {} } = await chrome.storage.sync.get("urls");
+  const workplace = urls.workplace?.trim();
+  if (!workplace || !window.location.href.includes(workplace)) {
+    return;
+  }
+  chrome.runtime.onMessage.addListener(workplaceListener);
+}
+
+initWorkplaceListener();

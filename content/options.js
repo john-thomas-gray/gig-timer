@@ -6,22 +6,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   const submitUrls = document.getElementById("submitURLs");
 
   const { urls = {} } = await chrome.storage.sync.get("urls");
-  // TODO: Replace with a proper backup url in production
-  const devAssignmentsUrl =
-    "https://localization.pixelogicmedia.com/individuals/8587/new_dashboard?english_services=true";
-  const devWorkplaceUrl =
-    "https://localization.pixelogicmedia.com/script_editor/individual/8587/assignments/";
-
-  assignmentsInput.value = urls.assignments ?? devAssignmentsUrl;
+  assignmentsInput.value = urls.assignments ?? "";
 
   assignmentsDisplay.textContent = assignmentsInput.value;
 
-  workplaceInput.value = urls.workplace ?? devWorkplaceUrl;
+  workplaceInput.value = urls.workplace ?? "";
   workplaceDisplay.textContent = workplaceInput.value;
 
   submitUrls.addEventListener("click", async () => {
-    const assignments = assignmentsInput?.value;
-    const workplace = workplaceInput?.value;
+    const assignments = assignmentsInput?.value?.trim() ?? "";
+    const workplace = workplaceInput?.value?.trim() ?? "";
 
     const data = { assignments, workplace };
 
