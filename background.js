@@ -1,8 +1,7 @@
 "use strict";
-import { projectTemplate } from "./utils/constants.js";
 import {
+  buildProjectId,
   normalizeProjectData,
-  parseTitleAndEpisode,
   parseRawProjectId,
 } from "./web-accessible-resources/normalization.js";
 import { exportProjectData } from "./exporters/sheetsExporter.js";
@@ -15,10 +14,17 @@ const storageCache = { count: 0, urls: {}, lastProjectId: "" };
 
 const sheetsData = {
   deploymentId:
-    "AKfycbzYBAvjXw5Dpokzx1U2gI9zJZh8UbnBKItOI5sJ8MxS7kLzUmrqLptFuuMHUzDfUSFJTg",
-  spreadSheetId: "1LcXPLmbIF7r8zC2z2got9wfbCxAMCRPPd65M4kaRBm0",
+    "AKfycbzlwJIjdvhhUjHa_wUI6mVdMiv10FZKEckMjzWvlyRiUaYYPOOgJeGFKOT1Fb8bscU7Iw",
+  spreadSheetId: "1q-BG4u62IEdBW1ewPEkyd8V3scm4Lsbcgl30OdtquCo",
   spreadSheetName: "Sheet2",
 };
+
+const WORKPLACE_CONTENT_FILES = ["content/workplace.js"];
+const STOPWATCH_CONTENT_FILES = ["content/stopwatch.js"];
+const ASSIGNMENTS_CONTENT_FILES = [
+  "content/inject-bridge.js",
+  "content/assignments.js",
+];
 
 let hasAddedListeners = false;
 
@@ -78,11 +84,10 @@ async function addListeners() {
       }
 
       if (url.includes(workplace)) {
-        const id = await getWorkplaceId("webNavigation", tabId);
-        if (id) {
-          chrome.storage.sync.set({ lastProjectId: id });
-          await createProjectFromTemplate(id);
-          await upsertProjects({ id: id, workplace_url: url });
+        const project = await getWorkplaceProject("webNavigation", tabId);
+        if (project?.id) {
+          chrome.storage.sync.set({ lastProjectId: project.id });
+          await upsertProjects(project);
           initStopwatch(tabId);
         }
         console.log("workplace runs");
@@ -158,24 +163,6 @@ async function getProjects(id) {
   return currentProject || undefined;
 }
 
-async function createProjectFromTemplate(id) {
-  try {
-    const existingProject = await getProjects(id);
-    if (existingProject) return;
-    const { title, episode } = parseTitleAndEpisode(id);
-
-    const projectData = {
-      ...projectTemplate,
-      id,
-      title,
-      episode,
-    };
-    await upsertProjects(projectData);
-  } catch (e) {
-    console.error("Failed to create template project", e);
-  }
-}
-
 async function getStoredProjectValue(key, tabId) {
   try {
     if (!key) throw new Error("Key must be provided");
@@ -194,50 +181,193 @@ async function getStoredProjectValue(key, tabId) {
 }
 
 async function getWorkplaceId(calledBy, tabIdOverride) {
+  const project = await getWorkplaceProject(calledBy, tabIdOverride);
+  return project?.id ?? storageCache.lastProjectId ?? undefined;
+}
+
+async function getWorkplaceProject(calledBy, tabIdOverride) {
   try {
     const targetTabId = tabIdOverride;
     console.log("targetTabId:", targetTabId);
-    if (!targetTabId) return storageCache.lastProjectId || undefined;
+    if (!targetTabId) return getLastProjectFallback();
     const tab = await chrome.tabs.get(targetTabId);
     const tabUrl = tab?.url;
 
-    const response = await chrome.tabs.sendMessage(targetTabId, {
-      action: "request-workplace-id",
-      source: "background.js",
-    });
+    const response = await sendTabMessage(
+      targetTabId,
+      {
+        action: "request-workplace-id",
+        source: "background.js",
+      },
+      { injectFiles: WORKPLACE_CONTENT_FILES },
+    );
     console.log("response", response);
 
-    const id = response?.data;
-    if (!id) {
-      return tabUrl ?? (storageCache.lastProjectId || undefined);
-    }
-    if (id === "__CONTINUE_PAGE__") {
-      console.log("Handled Continue page.");
-      return;
-    }
-    const normalizedId = parseRawProjectId(id);
-    return normalizedId ?? id ?? tabUrl ?? (storageCache.lastProjectId || undefined);
+    const project = await normalizeWorkplaceResponseData(response?.data, tabUrl);
+    return project ?? (await getLastProjectFallback());
   } catch (e) {
-    console.error(`${calledBy ?? "We"} failed to get workplace ID:`, e);
+    console.error(`${calledBy ?? "We"} failed to get workplace project:`, e);
     if (tabIdOverride) {
       try {
         const tab = await chrome.tabs.get(tabIdOverride);
-        if (tab?.url) return tab.url;
+        if (tab?.url && !tab.url.includes("authoring.netflixstudios.com")) {
+          return normalizeWorkplaceResponseData(tab.url, tab.url);
+        }
       } catch (tabError) {
         console.error("Fallback tab URL lookup failed:", tabError);
       }
     }
-    return storageCache.lastProjectId || undefined;
+    return getLastProjectFallback();
   }
 }
 
-function initStopwatch(tabId) {
+async function normalizeWorkplaceResponseData(data, tabUrl) {
+  if (!data) return undefined;
+  if (data === "__CONTINUE_PAGE__") {
+    console.log("Handled Continue page.");
+    return undefined;
+  }
+
+  if (typeof data === "string") {
+    const parsedId = parseRawProjectId(data);
+    return normalizeProjectData({
+      id: parsedId ?? data,
+      title: data,
+      workplace_url: tabUrl,
+    });
+  }
+
+  if (typeof data !== "object") return undefined;
+
+  const projectData = {
+    ...data,
+    workplace_url: data.workplace_url ?? tabUrl,
+  };
+  projectData.id = buildProjectId(projectData);
+  return normalizeProjectData(projectData);
+}
+
+async function getLastProjectFallback() {
+  if (!storageCache.lastProjectId) return undefined;
+
+  const project = await getProjects(storageCache.lastProjectId);
+  return project ?? { id: storageCache.lastProjectId };
+}
+
+async function sendTabMessage(tabId, message, options = {}) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, message);
+  } catch (error) {
+    if (!isMissingReceiverError(error)) throw error;
+
+    const injected = await injectContentScripts(tabId, options.injectFiles);
+    if (!injected) {
+      console.warn("No content-script receiver for message:", message.action);
+      return undefined;
+    }
+
+    await sleep(150);
+
+    try {
+      return await chrome.tabs.sendMessage(tabId, message);
+    } catch (retryError) {
+      if (isMissingReceiverError(retryError)) {
+        console.warn(
+          "Content-script receiver still unavailable:",
+          message.action,
+        );
+        return undefined;
+      }
+
+      throw retryError;
+    }
+  }
+}
+
+async function injectContentScripts(tabId, files = []) {
+  if (!files.length || !chrome.scripting?.executeScript) return false;
+
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!canInjectIntoUrl(tab?.url)) return false;
+
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files,
+    });
+    return true;
+  } catch (error) {
+    console.warn("Unable to inject content scripts:", error);
+    return false;
+  }
+}
+
+function isMissingReceiverError(error) {
+  return /receiving end does not exist|could not establish connection/i.test(
+    error?.message ?? "",
+  );
+}
+
+function canInjectIntoUrl(url) {
+  return /^https?:\/\//i.test(url ?? "");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isDefinedProjectValue(value) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string") return value.trim().length > 0;
+  return true;
+}
+
+function mergeProjectData(existingProject, nextProject) {
+  const merged = { ...existingProject };
+  Object.keys(nextProject).forEach((key) => {
+    if (isDefinedProjectValue(nextProject[key])) {
+      merged[key] = nextProject[key];
+    }
+  });
+
+  return merged;
+}
+
+async function upsertProjects(projects) {
+  const isSingle = !Array.isArray(projects);
+  const projectArray = isSingle ? [projects] : projects;
+
+  const currentProjects = (await getProjects()) || [];
+  const updatedProjects = [...currentProjects];
+
+  projectArray.forEach((project) => {
+    if (!project.id) return;
+
+    const index = updatedProjects.findIndex((p) => p.id === project.id);
+
+    if (index >= 0) {
+      updatedProjects[index] = mergeProjectData(updatedProjects[index], project);
+    } else {
+      updatedProjects.push(project);
+    }
+  });
+  console.log("updatedProjects", updatedProjects);
+
+  await chrome.storage.sync.set({ projects: updatedProjects });
+}
+
+async function initStopwatch(tabId) {
   try {
     if (!tabId) return;
-    chrome.tabs.sendMessage(tabId, {
-      action: "init-stopwatch",
-      source: "background.js",
-    });
+    await sendTabMessage(
+      tabId,
+      {
+        action: "init-stopwatch",
+        source: "background.js",
+      },
+      { injectFiles: STOPWATCH_CONTENT_FILES },
+    );
     console.log("sent init stopwatch");
   } catch (e) {
     console.error("Failed to initiate stopwatch:", e);
@@ -250,9 +380,13 @@ async function setUpAssignmentsPage(tabId) {
   let response;
   try {
     if (!tabId) return;
-    response = await chrome.tabs.sendMessage(tabId, {
-      action: "request-assignments-data",
-    });
+    response = await sendTabMessage(
+      tabId,
+      {
+        action: "request-assignments-data",
+      },
+      { injectFiles: ASSIGNMENTS_CONTENT_FILES },
+    );
     if (!response) {
       console.warn("No response from content script");
       return;
@@ -311,31 +445,4 @@ function parseAssignmentData(snapshot) {
     );
     return projectWithConvertedKeys;
   });
-}
-
-async function upsertProjects(projects) {
-  const isSingle = !Array.isArray(projects);
-  const projectArray = isSingle ? [projects] : projects;
-
-  const currentProjects = (await getProjects()) || [];
-  const updatedProjects = [...currentProjects];
-
-  projectArray.forEach((project) => {
-    if (!project.id) return;
-
-    const index = updatedProjects.findIndex((p) => p.id === project.id);
-
-    if (index >= 0) {
-      Object.keys(project).forEach((key) => {
-        if (project[key] !== undefined) {
-          updatedProjects[index][key] = project[key];
-        }
-      });
-    } else {
-      updatedProjects.push(project);
-    }
-  });
-  console.log("updatedProjects", updatedProjects);
-
-  await chrome.storage.sync.set({ projects: updatedProjects });
 }

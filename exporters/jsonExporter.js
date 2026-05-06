@@ -6,8 +6,12 @@ export function exportProjectData(projectData) {
   }
 
   const jsonExport = JSON.stringify(projectData);
+  const episodeLabel =
+    projectData.season && projectData.episode
+      ? `S${projectData.season}E${projectData.episode}`
+      : projectData.episode;
   const filename = `${safeFilename(projectData.title)}_${safeFilename(
-    projectData.episode
+    episodeLabel
   )}`;
 
   const url = "data:application/json;base64," + btoa(jsonExport);

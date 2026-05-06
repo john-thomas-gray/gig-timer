@@ -26,14 +26,19 @@ let selectedProject = undefined;
 let defaultFields;
 
 async function init() {
-  existingProjects = await getStoredProjects();
-  await buildUI(existingProjects);
+  defaultFields = document.getElementById("defaultFields");
+  const projectSelect = document.getElementById("projectSelect");
   const exportButton = document.getElementById("exportButton");
   const updateButton = document.getElementById("updateButton");
 
-  document
-    .getElementById("projectSelect")
-    .addEventListener("change", onSelectChange);
+  if (!defaultFields || !projectSelect || !exportButton || !updateButton) {
+    return;
+  }
+
+  existingProjects = await getStoredProjects();
+  await buildUI(existingProjects);
+
+  projectSelect.addEventListener("change", onSelectChange);
 
   exportButton.addEventListener("click", () => {
     exportProject();
@@ -80,16 +85,32 @@ function buildProjectOptions(projects) {
 
     const option = document.createElement("option");
     option.value = project.id;
-    option.textContent = project.episode || "Unknown";
+    option.textContent = formatEpisodeLabel(project);
 
     optgroups[title].appendChild(option);
   });
+}
+
+function formatEpisodeLabel(project) {
+  const season = project.season?.toString().trim();
+  const episode = project.episode?.toString().trim();
+  const legacyMatch = episode?.match(
+    /^S(?:eason)?\s*0*(\d+)[\s_-]*E(?:p(?:isode)?)?\s*0*(\d+)$/i,
+  );
+
+  if (season && episode && !legacyMatch) return `S${season}E${episode}`;
+  if (legacyMatch) {
+    return `S${Number(legacyMatch[1])}E${Number(legacyMatch[2])}`;
+  }
+  if (episode) return `Episode ${episode}`;
+  return "Unknown";
 }
 
 function buildFormInputs() {
   const defaultFields = document.getElementById("defaultFields");
 
   const formSchema = {
+    season: "text",
     episode: "text",
     work_time: "text",
     workplace_url: "text",
@@ -232,12 +253,23 @@ function collectFormValues() {
 
 async function normalizeFormValues(rawValues) {
   const module = await loadNormalizationModule();
+  const parsedTitle = module.parseTitleAndEpisode(rawValues.title);
+  const parsedEpisode = module.parseSeasonEpisodeInput(rawValues.episode);
+  const season =
+    module.normalizeSeasonInput(rawValues.season) ??
+    parsedEpisode.season ??
+    parsedTitle.season;
+  const episode = module.normalizeEpisodeForSeason(
+    module.normalizeEpisodeInput(rawValues.episode) ?? parsedTitle.episode,
+    season,
+  );
   const normalized = {
-    title: rawValues.title?.trim() || undefined,
+    title: parsedTitle.title ?? rawValues.title?.trim() ?? undefined,
     contractor: rawValues.contractor?.trim() || undefined,
     client: rawValues.client?.trim() || undefined,
     workplace_url: rawValues.workplace_url?.trim() || undefined,
-    episode: module.normalizeEpisodeInput(rawValues.episode),
+    season,
+    episode,
     date_assigned: module.normalizeDateInput(rawValues.date_assigned),
     date_due: module.normalizeDateInput(rawValues.date_due),
     runtime: module.normalizeDurationInput(rawValues.runtime),
@@ -272,24 +304,20 @@ async function updateProjectFromForm() {
       ...normalizedValues,
     };
 
-    projectToSave.id =
-      selectedProject?.id ??
-      module.buildProjectIdFromTitleAndEpisode(
-        projectToSave.title,
-        projectToSave.episode,
-      );
+    const previousProjectId = selectedProject?.id;
+    projectToSave.id = module.buildProjectId(projectToSave) ?? previousProjectId;
 
     if (!projectToSave.id) {
       console.warn(
-        "Could not save project. A valid id is required (select project or provide title + S#_E#).",
+        "Could not save project. Provide a title, and season/episode when applicable.",
       );
       return;
     }
 
     const result = await chrome.storage.sync.get("projects");
     const projects = Array.isArray(result.projects) ? result.projects : [];
-    const existingIndex = projects.findIndex(
-      (project) => project.id === projectToSave.id,
+    const existingIndex = projects.findIndex((project) =>
+      [previousProjectId, projectToSave.id].includes(project.id),
     );
 
     if (existingIndex >= 0) {
