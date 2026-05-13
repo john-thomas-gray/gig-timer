@@ -1,4 +1,7 @@
+import { getPipelineUrlDefaults } from "../utils/pixelogic.js";
+
 document.addEventListener("DOMContentLoaded", async () => {
+  const pipelineUrlDefaults = getPipelineUrlDefaults();
   const assignmentsInput = document.getElementById("assignmentsInput");
   const assignmentsDisplay = document.getElementById("displayAssignments");
   const workplaceInput = document.getElementById("workplaceInput");
@@ -6,11 +9,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const submitUrls = document.getElementById("submitURLs");
 
   const { urls = {} } = await chrome.storage.sync.get("urls");
-  assignmentsInput.value = urls.assignments ?? "";
+  assignmentsInput.value = urls.assignments ?? pipelineUrlDefaults.assignments;
 
   assignmentsDisplay.textContent = assignmentsInput.value;
 
-  workplaceInput.value = urls.workplace ?? "";
+  workplaceInput.value = urls.workplace ?? pipelineUrlDefaults.workplace;
   workplaceDisplay.textContent = workplaceInput.value;
 
   submitUrls.addEventListener("click", async () => {

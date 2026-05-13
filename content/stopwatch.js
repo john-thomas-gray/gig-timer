@@ -1,3 +1,4 @@
+(() => {
 /* Initialize self. Request existing workTime, await response. Start stopwatch. */
 let initiated = false;
 let stopwatchElement = undefined;
@@ -7,21 +8,39 @@ let stopwatchRunning = false;
 let lastStartCallAt = 0;
 let idleSeconds = 0;
 let isIdle = false;
+let pixelogicModulePromise;
 
+const LOG_PREFIX = "[Gig Timer]";
 const IDLE_THRESHOLD_SECONDS = 31;
 let lastActionAt = Date.now();
 
 const formatTimestamp = (ms) => new Date(ms).toLocaleTimeString();
 
+function loadPixelogicModule() {
+  pixelogicModulePromise ??= import(chrome.runtime.getURL("utils/pixelogic.js"));
+  return pixelogicModulePromise;
+}
+
 async function initStopwatchScript() {
+  const pixelogic = await loadPixelogicModule();
   const { urls = {} } = await chrome.storage.sync.get("urls");
   const workplace = urls.workplace?.trim();
-  if (!workplace || !window.location.href.includes(workplace)) {
+  if (
+    !pixelogic.isTimerPageUrl(window.location.href, { workplace }) &&
+    !isNetflixAuthoringPage()
+  ) {
     return;
   }
 
+  console.log(`${LOG_PREFIX} Stopwatch content script active`, {
+    url: window.location.href,
+  });
+
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.source === "background.js" && msg.action === "init-stopwatch") {
+      console.log(`${LOG_PREFIX} Stopwatch init message received`, {
+        url: window.location.href,
+      });
       initStopwatch();
     }
   });
@@ -32,10 +51,21 @@ async function initStopwatchScript() {
 
 initStopwatchScript();
 
+function isNetflixAuthoringPage() {
+  return (
+    window.location.hostname === "authoring.netflixstudios.com" &&
+    window.location.pathname.startsWith("/editor")
+  );
+}
+
 async function initStopwatch() {
   await start();
   initiated = true;
-  console.log("Stopwatch initiated at", formatTimestamp(Date.now()));
+  console.log(`${LOG_PREFIX} Stopwatch initiated`, {
+    at: formatTimestamp(Date.now()),
+    elapsedTime,
+    url: window.location.href,
+  });
 }
 
 function createStopwatchElement() {
@@ -65,11 +95,17 @@ async function start() {
   const THROTTLE_MS = 1000;
   const now = Date.now();
   if (now - lastStartCallAt < THROTTLE_MS) {
+    console.log(`${LOG_PREFIX} Stopwatch start skipped by throttle`, {
+      elapsedTime,
+    });
     return;
   }
 
   lastStartCallAt = now;
   stopwatchRunning = true;
+  console.log(`${LOG_PREFIX} Stopwatch start requested`, {
+    url: window.location.href,
+  });
 
   let storedWorktime = -1;
   try {
@@ -77,7 +113,10 @@ async function start() {
       action: "get-stored-worktime",
       url: window.location.href,
     });
-    console.log("storedWorkTime: ", formatTime(storedWorktime));
+    console.log(`${LOG_PREFIX} Stored work time loaded`, {
+      formatted: formatTime(Number(storedWorktime) || 0),
+      seconds: storedWorktime,
+    });
   } catch (e) {
     console.error("Unable to get stored workTime", e);
     storedWorktime = elapsedTime;
@@ -91,6 +130,9 @@ async function start() {
   }
 
   clearInterval(stopwatchInterval);
+  console.log(`${LOG_PREFIX} Stopwatch interval running`, {
+    elapsedTime,
+  });
   stopwatchInterval = setInterval(() => {
     if (!stopwatchRunning) return;
 
@@ -123,6 +165,11 @@ function checkIdle() {
 }
 
 function storeElapsedTime(nextElapsedTime) {
+  console.log(`${LOG_PREFIX} Storing elapsed time`, {
+    formatted: formatTime(nextElapsedTime),
+    seconds: nextElapsedTime,
+    url: window.location.href,
+  });
   chrome.runtime.sendMessage({
     action: "store-elapsed-time",
     elapsedTime: nextElapsedTime,
@@ -137,7 +184,10 @@ function monitorUserActions() {
   idleSeconds = 0;
 
   if (isIdle) {
-    console.log("unpaused at:", formatTime(elapsedTime));
+    console.log(`${LOG_PREFIX} User activity resumed stopwatch`, {
+      formatted: formatTime(elapsedTime),
+      seconds: elapsedTime,
+    });
     isIdle = false;
     start();
   }
@@ -145,7 +195,10 @@ function monitorUserActions() {
 
 function pause() {
   stopwatchRunning = false;
-  console.log("paused at:", formatTime(elapsedTime));
+  console.log(`${LOG_PREFIX} Stopwatch paused for idle time`, {
+    formatted: formatTime(elapsedTime),
+    seconds: elapsedTime,
+  });
   clearInterval(stopwatchInterval);
   storeElapsedTime(elapsedTime);
 }
@@ -160,3 +213,4 @@ function formatTime(seconds) {
   const secs = (seconds % 60).toString().padStart(2, "0");
   return `${hrs}:${mins}:${secs}`;
 }
+})();

@@ -1,3 +1,11 @@
+(() => {
+let pixelogicModulePromise;
+
+function loadPixelogicModule() {
+  pixelogicModulePromise ??= import(chrome.runtime.getURL("utils/pixelogic.js"));
+  return pixelogicModulePromise;
+}
+
 function injectBridge() {
   if (!window.__workTimerBridgeInitialized) {
     window.__workTimerBridgeInitialized = true;
@@ -11,16 +19,18 @@ function injectBridge() {
 }
 
 async function initBridgeInjection() {
+  const pixelogic = await loadPixelogicModule();
   const { urls = {} } = await chrome.storage.sync.get("urls");
   const assignments = urls.assignments?.trim();
-  const workplace = urls.workplace?.trim();
   const currentUrl = window.location.href;
-  const shouldRun =
-    (assignments && currentUrl.includes(assignments)) ||
-    (workplace && currentUrl.includes(workplace));
+  const shouldRun = pixelogic.shouldInjectLegacyAssignmentsBridge(
+    currentUrl,
+    assignments,
+  );
 
   if (!shouldRun) return;
   injectBridge();
 }
 
 initBridgeInjection();
+})();

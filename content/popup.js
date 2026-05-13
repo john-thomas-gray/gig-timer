@@ -1,3 +1,4 @@
+(() => {
 // import(chrome.runtime.getURL("web-accessible-resources/normalization.js")).then(
 // );
 
@@ -348,3 +349,4 @@ function exportProject() {
     source: "popup.js",
   });
 }
+})();

@@ -9,7 +9,15 @@ import {
   calculateHourlyRate,
   calculateInvoiceAmount,
 } from "./web-accessible-resources/normalization.js";
+import {
+  isAssignmentsUrl,
+  isPixelogicCompositionProjectUrl,
+  isTimerPageUrl,
+  isWorkplaceUrl,
+} from "./utils/pixelogic.js";
 
+const LOG_PREFIX = "[Gig Timer]";
+const NETFLIX_AUTHORING_HOST = "authoring.netflixstudios.com";
 const storageCache = { count: 0, urls: {}, lastProjectId: "" };
 
 const sheetsData = {
@@ -25,6 +33,8 @@ const ASSIGNMENTS_CONTENT_FILES = [
   "content/inject-bridge.js",
   "content/assignments.js",
 ];
+const COMPOSITION_METADATA_RETRY_ATTEMPTS = 6;
+const COMPOSITION_METADATA_RETRY_DELAY_MS = 500;
 
 let hasAddedListeners = false;
 
@@ -57,60 +67,150 @@ async function addListeners() {
     }
   });
 
-  const onCompleteTimers = new Map();
+  const navigationTimers = new Map();
   const DEBOUNCE_MS = 300;
 
-  chrome.webNavigation.onCompleted.addListener(({ frameId, tabId, url }) => {
+  const handleTimerPageNavigation = ({ frameId, tabId, url }) => {
     if (frameId !== 0) return;
 
-    clearTimeout(onCompleteTimers.get(tabId));
+    clearTimeout(navigationTimers.get(tabId));
 
     const timer = setTimeout(async () => {
-      onCompleteTimers.delete(tabId);
+      navigationTimers.delete(tabId);
 
       const assignments = storageCache.urls?.assignments?.trim();
       const workplace = storageCache.urls?.workplace?.trim();
+      const isAssignmentPage = isAssignmentsUrl(url, assignments);
+      const isWorkplacePage = isWorkplaceUrl(url, workplace);
+      const isCompositionProject = isPixelogicCompositionProjectUrl(url);
+      const isNetflixAuthoringPage = isNetflixAuthoringUrl(url);
+      const shouldShowStopwatch = isTimerPageUrl(url, { workplace });
 
-      if (!assignments || !workplace) {
-        console.warn(
-          "Missing required assignment and/or workplace url. Set in Options.",
-        );
+      if (!isAssignmentPage && !isWorkplacePage && !isNetflixAuthoringPage) {
         return;
       }
 
-      if (url.includes(assignments)) {
-        await setUpAssignmentsPage(tabId);
-        console.log("Assignments runs");
+      console.log(`${LOG_PREFIX} Processing timer page navigation`, {
+        isAssignmentPage,
+        isCompositionProject,
+        isNetflixAuthoringPage,
+        isWorkplacePage,
+        shouldShowStopwatch,
+        tabId,
+        url,
+      });
+
+      if (isAssignmentPage) {
+        console.log(`${LOG_PREFIX} Assignment page recognized`, { tabId, url });
+        const projects = isCompositionProject
+          ? await setUpCompositionProjectPage(tabId)
+          : await setUpAssignmentsPage(tabId);
+        if (isCompositionProject) {
+          const project = projects?.find((candidate) => candidate?.id);
+          if (project?.id) {
+            const existingProject = await getMatchingProject(project);
+            const projectId =
+              getPreferredProjectId(project, existingProject) ?? project.id;
+            storageCache.lastProjectId = projectId;
+            await chrome.storage.sync.set({ lastProjectId: projectId });
+            console.log(
+              `${LOG_PREFIX} Composition project stored; starting stopwatch`,
+              { projectId, tabId },
+            );
+            await initStopwatch(tabId);
+          } else {
+            console.warn(
+              `${LOG_PREFIX} Composition project recognized but no project metadata was found`,
+              { tabId, url },
+            );
+          }
+        }
       }
 
-      if (url.includes(workplace)) {
+      if (isNetflixAuthoringPage) {
+        console.log(`${LOG_PREFIX} Netflix authoring page recognized`, {
+          tabId,
+          url,
+        });
         const project = await getWorkplaceProject("webNavigation", tabId);
         if (project?.id) {
-          chrome.storage.sync.set({ lastProjectId: project.id });
+          storageCache.lastProjectId = project.id;
+          await chrome.storage.sync.set({ lastProjectId: project.id });
           await upsertProjects(project);
-          initStopwatch(tabId);
+          await initStopwatch(tabId);
+        } else {
+          console.warn(
+            `${LOG_PREFIX} Netflix authoring page had no project metadata`,
+            {
+              tabId,
+              url,
+            },
+          );
         }
-        console.log("workplace runs");
+      }
+
+      if (isWorkplacePage) {
+        console.log(`${LOG_PREFIX} Workplace page recognized`, { tabId, url });
+        const project = await getWorkplaceProject("webNavigation", tabId);
+        if (project?.id) {
+          await chrome.storage.sync.set({ lastProjectId: project.id });
+          await upsertProjects(project);
+          if (shouldShowStopwatch) {
+            console.log(
+              `${LOG_PREFIX} Workplace project stored; starting stopwatch`,
+              { projectId: project.id, tabId },
+            );
+            await initStopwatch(tabId);
+          } else {
+            console.log(
+              `${LOG_PREFIX} Workplace project stored without starting stopwatch`,
+              { projectId: project.id, tabId },
+            );
+          }
+        } else {
+          console.warn(`${LOG_PREFIX} Workplace page had no project metadata`, {
+            tabId,
+            url,
+          });
+        }
       }
     }, DEBOUNCE_MS);
 
-    onCompleteTimers.set(tabId, timer);
-  });
+    navigationTimers.set(tabId, timer);
+  };
+
+  chrome.webNavigation.onCompleted.addListener(handleTimerPageNavigation);
+  chrome.webNavigation.onHistoryStateUpdated?.addListener(
+    handleTimerPageNavigation,
+  );
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg?.action) return;
 
     if (msg.action === "store-elapsed-time") {
-      console.log("store-elapsed-time runs");
+      console.log(`${LOG_PREFIX} Store elapsed time requested`, {
+        elapsedTime: msg.elapsedTime,
+        tabId: sender?.tab?.id,
+      });
       (async () => {
         try {
           const workTimeValue = msg.elapsedTime ?? 0;
-
-          const workplaceId = await getWorkplaceId(
+          const currentProject = await getWorkplaceProject(
             "store-elapsed-time",
             sender?.tab?.id,
           );
-          const project = await getProjects(workplaceId);
+          const existingProject = currentProject
+            ? await getMatchingProject(currentProject)
+            : undefined;
+          const workplaceId =
+            getPreferredProjectId(currentProject, existingProject) ??
+            storageCache.lastProjectId;
+          const project = currentProject
+            ? mergeProjectData(existingProject ?? {}, {
+                ...currentProject,
+                id: workplaceId,
+              })
+            : existingProject;
           const invoiceAmount = calculateInvoiceAmount(
             project?.rate,
             project?.runtime,
@@ -118,7 +218,10 @@ async function addListeners() {
           if (!workplaceId) {
             throw new Error("Workplace ID not found");
           }
+          storageCache.lastProjectId = workplaceId;
+          await chrome.storage.sync.set({ lastProjectId: workplaceId });
           await upsertProjects({
+            ...(currentProject ?? {}),
             id: workplaceId,
             work_time: workTimeValue,
             invoice_amount: invoiceAmount,
@@ -132,8 +235,14 @@ async function addListeners() {
     }
 
     if (msg.action === "get-stored-worktime") {
-      console.log("get-stored-worktime runs");
+      console.log(`${LOG_PREFIX} Stored work time requested`, {
+        tabId: sender?.tab?.id,
+      });
       getStoredProjectValue("work_time", sender?.tab?.id).then((workTime) => {
+        console.log(`${LOG_PREFIX} Stored work time response`, {
+          tabId: sender?.tab?.id,
+          workTime,
+        });
         sendResponse(workTime);
       });
       return true;
@@ -153,6 +262,19 @@ async function addListeners() {
     }
   });
 }
+
+function isNetflixAuthoringUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.hostname === NETFLIX_AUTHORING_HOST &&
+      parsed.pathname.startsWith("/editor")
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function getProjects(id) {
   const result = await chrome.storage.sync.get("projects");
   const projects = Array.isArray(result.projects) ? result.projects : [];
@@ -163,14 +285,33 @@ async function getProjects(id) {
   return currentProject || undefined;
 }
 
+async function getMatchingProject(project) {
+  if (!project) return undefined;
+  const projects = await getProjects();
+  return projects.find((existingProject) =>
+    matchesProject(existingProject, project),
+  );
+}
+
 async function getStoredProjectValue(key, tabId) {
   try {
     if (!key) throw new Error("Key must be provided");
-    console.log("getStoredProjectValue: ", key);
-    const id = await getWorkplaceId("getStoredProjectValue", tabId);
-    if (!id) return undefined;
+    console.log(`${LOG_PREFIX} Looking up stored project value`, { key, tabId });
+    const project = await getWorkplaceProject("getStoredProjectValue", tabId);
+    const matchingProject = project ? await getMatchingProject(project) : undefined;
+    const id =
+      getPreferredProjectId(project, matchingProject) ?? storageCache.lastProjectId;
+    if (!id && !project) return undefined;
 
-    const currentProject = await getProjects(id);
+    if (project?.id && id) {
+      await upsertProjects({ ...project, id });
+      storageCache.lastProjectId = id;
+      await chrome.storage.sync.set({ lastProjectId: id });
+    }
+
+    const currentProject =
+      (id ? await getProjects(id) : undefined) ??
+      (project ? await getMatchingProject(project) : undefined);
     if (!currentProject) return undefined;
 
     return currentProject[key] ?? undefined;
@@ -188,10 +329,17 @@ async function getWorkplaceId(calledBy, tabIdOverride) {
 async function getWorkplaceProject(calledBy, tabIdOverride) {
   try {
     const targetTabId = tabIdOverride;
-    console.log("targetTabId:", targetTabId);
+    console.log(`${LOG_PREFIX} Resolving workplace project`, {
+      calledBy,
+      tabId: targetTabId,
+    });
     if (!targetTabId) return getLastProjectFallback();
     const tab = await chrome.tabs.get(targetTabId);
     const tabUrl = tab?.url;
+    console.log(`${LOG_PREFIX} Requesting workplace metadata from tab`, {
+      tabId: targetTabId,
+      tabUrl,
+    });
 
     const response = await sendTabMessage(
       targetTabId,
@@ -201,9 +349,17 @@ async function getWorkplaceProject(calledBy, tabIdOverride) {
       },
       { injectFiles: WORKPLACE_CONTENT_FILES },
     );
-    console.log("response", response);
+    console.log(`${LOG_PREFIX} Workplace metadata response received`, {
+      hasData: Boolean(response?.data),
+      tabId: targetTabId,
+      type: typeof response?.data,
+    });
 
     const project = await normalizeWorkplaceResponseData(response?.data, tabUrl);
+    console.log(`${LOG_PREFIX} Workplace metadata normalized`, {
+      projectId: project?.id,
+      tabId: targetTabId,
+    });
     return project ?? (await getLastProjectFallback());
   } catch (e) {
     console.error(`${calledBy ?? "We"} failed to get workplace project:`, e);
@@ -323,9 +479,51 @@ function isDefinedProjectValue(value) {
   return true;
 }
 
+function getPreferredProjectId(nextProject, existingProject) {
+  if (
+    existingProject?.id &&
+    isPixelogicFallbackProject(nextProject) &&
+    !isPixelogicFallbackProject(existingProject)
+  ) {
+    return existingProject.id;
+  }
+
+  return nextProject?.id ?? existingProject?.id;
+}
+
+function isPixelogicFallbackProject(project) {
+  if (!project) return false;
+
+  return (
+    isPixelogicFallbackProjectValue(project.id) ||
+    isPixelogicFallbackProjectValue(project.title)
+  );
+}
+
+function isPixelogicFallbackProjectValue(value) {
+  return /^Pixelogic (?:Project|Task) \d+$/i.test(String(value ?? "").trim());
+}
+
 function mergeProjectData(existingProject, nextProject) {
   const merged = { ...existingProject };
   Object.keys(nextProject).forEach((key) => {
+    if (
+      key === "work_time" &&
+      Number(nextProject[key]) === 0 &&
+      Number(existingProject[key]) > 0
+    ) {
+      return;
+    }
+
+    if (
+      (key === "id" || key === "title") &&
+      isPixelogicFallbackProjectValue(nextProject[key]) &&
+      isDefinedProjectValue(existingProject[key]) &&
+      !isPixelogicFallbackProjectValue(existingProject[key])
+    ) {
+      return;
+    }
+
     if (isDefinedProjectValue(nextProject[key])) {
       merged[key] = nextProject[key];
     }
@@ -344,22 +542,84 @@ async function upsertProjects(projects) {
   projectArray.forEach((project) => {
     if (!project.id) return;
 
-    const index = updatedProjects.findIndex((p) => p.id === project.id);
+    const matchingIndexes = updatedProjects.reduce(
+      (indexes, existingProject, index) => {
+        if (matchesProject(existingProject, project)) indexes.push(index);
+        return indexes;
+      },
+      [],
+    );
 
-    if (index >= 0) {
-      updatedProjects[index] = mergeProjectData(updatedProjects[index], project);
+    if (matchingIndexes.length > 0) {
+      const insertIndex = Math.min(...matchingIndexes);
+      let mergedProject = {};
+      matchingIndexes.forEach((index) => {
+        mergedProject = mergeProjectData(mergedProject, updatedProjects[index]);
+      });
+      mergedProject = mergeProjectData(mergedProject, project);
+
+      [...matchingIndexes]
+        .sort((a, b) => b - a)
+        .forEach((index) => {
+          updatedProjects.splice(index, 1);
+        });
+      updatedProjects.splice(insertIndex, 0, mergedProject);
     } else {
       updatedProjects.push(project);
     }
   });
-  console.log("updatedProjects", updatedProjects);
+  console.log(`${LOG_PREFIX} Projects upserted`, {
+    incomingIds: projectArray.map((project) => project?.id).filter(Boolean),
+    totalProjects: updatedProjects.length,
+  });
 
   await chrome.storage.sync.set({ projects: updatedProjects });
+}
+
+function matchesProject(existingProject, nextProject) {
+  if (existingProject.id && existingProject.id === nextProject.id) return true;
+  if (
+    existingProject.assignment_url &&
+    nextProject.assignment_url &&
+    existingProject.assignment_url === nextProject.assignment_url
+  ) {
+    return true;
+  }
+  if (
+    existingProject.task_id &&
+    nextProject.task_id &&
+    existingProject.task_id === nextProject.task_id
+  ) {
+    return true;
+  }
+  if (
+    existingProject.project_id &&
+    nextProject.project_id &&
+    existingProject.project_id === nextProject.project_id
+  ) {
+    return true;
+  }
+  if (
+    existingProject.request_ref &&
+    nextProject.request_ref &&
+    existingProject.request_ref === nextProject.request_ref
+  ) {
+    return true;
+  }
+  if (
+    existingProject.workplace_url &&
+    nextProject.workplace_url &&
+    existingProject.workplace_url === nextProject.workplace_url
+  ) {
+    return true;
+  }
+  return false;
 }
 
 async function initStopwatch(tabId) {
   try {
     if (!tabId) return;
+    console.log(`${LOG_PREFIX} Sending stopwatch init`, { tabId });
     await sendTabMessage(
       tabId,
       {
@@ -368,7 +628,7 @@ async function initStopwatch(tabId) {
       },
       { injectFiles: STOPWATCH_CONTENT_FILES },
     );
-    console.log("sent init stopwatch");
+    console.log(`${LOG_PREFIX} Stopwatch init sent`, { tabId });
   } catch (e) {
     console.error("Failed to initiate stopwatch:", e);
   }
@@ -376,10 +636,40 @@ async function initStopwatch(tabId) {
 
 // Assignments
 
+async function setUpCompositionProjectPage(tabId) {
+  let projects = [];
+
+  for (
+    let attempt = 1;
+    attempt <= COMPOSITION_METADATA_RETRY_ATTEMPTS;
+    attempt += 1
+  ) {
+    projects = (await setUpAssignmentsPage(tabId)) ?? [];
+    const project = projects.find((candidate) => candidate?.id);
+    const isFallback = isPixelogicFallbackProject(project);
+
+    console.log(`${LOG_PREFIX} Composition metadata scrape attempt`, {
+      attempt,
+      isFallback,
+      projectId: project?.id,
+      title: project?.title,
+    });
+
+    if (project?.id && !isFallback) return projects;
+
+    if (attempt < COMPOSITION_METADATA_RETRY_ATTEMPTS) {
+      await sleep(COMPOSITION_METADATA_RETRY_DELAY_MS);
+    }
+  }
+
+  return projects;
+}
+
 async function setUpAssignmentsPage(tabId) {
   let response;
   try {
     if (!tabId) return;
+    console.log(`${LOG_PREFIX} Requesting assignments data`, { tabId });
     response = await sendTabMessage(
       tabId,
       {
@@ -388,20 +678,57 @@ async function setUpAssignmentsPage(tabId) {
       { injectFiles: ASSIGNMENTS_CONTENT_FILES },
     );
     if (!response) {
-      console.warn("No response from content script");
+      console.warn(`${LOG_PREFIX} No response from assignments content script`, {
+        tabId,
+      });
       return;
     }
+    console.log(`${LOG_PREFIX} Assignments response received`, {
+      tabId,
+      type: response.type,
+    });
     if (response.type === "W2UI_DATA_ERROR") {
       throw new Error(
         `Error getting W2UI assignments data. Reason: ${response.payload.reason}. Current state: ${response.payload.state}`,
       );
     }
+    if (response.type === "PIXELLOGIC_ASSIGNMENTS_DATA_ERROR") {
+      throw new Error(
+        `Error getting Pixelogic assignments data. Reason: ${response.payload.reason}`,
+      );
+    }
+    if (response.type === "RETURN_PIXELLOGIC_ASSIGNMENTS_DATA") {
+      return await formatAndNormalizeAssignmentProjects(
+        response.payload.projects,
+      );
+    }
     if (response.type === "RETURN_W2UI_DATA") {
-      formatAndNormalizeAssignmentData(response.payload.snapshot);
+      return await formatAndNormalizeAssignmentData(response.payload.snapshot);
     }
   } catch (e) {
     console.warn("Failed to send message:", e);
     return;
+  }
+}
+
+async function formatAndNormalizeAssignmentProjects(projects) {
+  try {
+    if (!Array.isArray(projects)) {
+      throw new Error("Invalid Pixelogic assignment data shape");
+    }
+
+    const normalizedProjects = projects.map((project) =>
+      normalizeProjectData(project),
+    );
+    console.log(`${LOG_PREFIX} Normalized Pixelogic assignment projects`, {
+      count: normalizedProjects.length,
+      ids: normalizedProjects.map((project) => project.id).filter(Boolean),
+    });
+    await upsertProjects(normalizedProjects);
+    return normalizedProjects;
+  } catch (e) {
+    console.error("Failed to handle Pixelogic assignment data:", e);
+    return [];
   }
 }
 
@@ -412,8 +739,10 @@ async function formatAndNormalizeAssignmentData(snapshot) {
       normalizeProjectData(project),
     );
     await upsertProjects(normalizedProject);
+    return normalizedProject;
   } catch (e) {
     console.error("Failed to handle assignment snapshot:", e);
+    return [];
   }
 }
 

@@ -1,5 +1,13 @@
+(() => {
 const CONTINUE_PAGE_TEXT =
   "We detected that you recently had an open session for this assignment.";
+let pixelogicModulePromise;
+const LOG_PREFIX = "[Gig Timer]";
+
+function loadPixelogicModule() {
+  pixelogicModulePromise ??= import(chrome.runtime.getURL("utils/pixelogic.js"));
+  return pixelogicModulePromise;
+}
 
 const NETFLIX_CONTRACTOR_DEFAULTS = {
   client: "Netflix",
@@ -14,7 +22,15 @@ const workplaceListener = (msg, sender, sendResponse) => {
 
   (async () => {
     try {
+      console.log(`${LOG_PREFIX} Workplace metadata requested`, {
+        url: window.location.href,
+      });
       const data = await getWorkplaceData();
+      console.log(`${LOG_PREFIX} Workplace metadata response ready`, {
+        id: data?.id,
+        taskId: data?.task_id,
+        type: typeof data,
+      });
       sendResponse({ data });
     } catch (e) {
       console.error("Cannot retrieve workplace metadata:", e);
@@ -26,8 +42,40 @@ const workplaceListener = (msg, sender, sendResponse) => {
 };
 
 async function getWorkplaceData() {
-  if (isContinuePage()) return "__CONTINUE_PAGE__";
-  if (isNetflixAuthoringPage()) return getNetflixProjectData();
+  if (isContinuePage()) {
+    console.log(`${LOG_PREFIX} Continue page detected`);
+    return "__CONTINUE_PAGE__";
+  }
+  const pixelogic = await loadPixelogicModule();
+  const pixelogicProject = pixelogic.scrapePixelogicTimerDocument(
+    document,
+    window.location.href,
+  );
+  if (
+    pixelogic.isPixelogicCompositionProjectUrl(window.location.href) ||
+    pixelogic.isPixelogicOperationsManagerTaskUrl(window.location.href)
+  ) {
+    console.log(`${LOG_PREFIX} Pixelogic timer metadata scraped`, {
+      id: pixelogicProject?.id,
+      projectId: pixelogicProject?.project_id,
+      taskId: pixelogicProject?.task_id,
+      title: pixelogicProject?.title,
+    });
+    return pixelogicProject;
+  }
+  if (pixelogicProject) {
+    console.log(`${LOG_PREFIX} Pixelogic metadata scraped from document`, {
+      id: pixelogicProject?.id,
+      taskId: pixelogicProject?.task_id,
+    });
+    return pixelogicProject;
+  }
+
+  if (isNetflixAuthoringPage()) {
+    console.log(`${LOG_PREFIX} Netflix authoring page detected`);
+    return getNetflixProjectData();
+  }
+  console.log(`${LOG_PREFIX} Falling back to legacy project metadata`);
   return getLegacyProjectData();
 }
 
@@ -319,12 +367,20 @@ function todayIsoDate() {
 }
 
 async function initWorkplaceListener() {
+  const pixelogic = await loadPixelogicModule();
   const { urls = {} } = await chrome.storage.sync.get("urls");
   const workplace = urls.workplace?.trim();
-  if (!workplace || !window.location.href.includes(workplace)) {
+  if (
+    !pixelogic.isProjectMetadataPageUrl(window.location.href, { workplace }) &&
+    !isNetflixAuthoringPage()
+  ) {
     return;
   }
+  console.log(`${LOG_PREFIX} Workplace content script active`, {
+    url: window.location.href,
+  });
   chrome.runtime.onMessage.addListener(workplaceListener);
 }
 
 initWorkplaceListener();
+})();

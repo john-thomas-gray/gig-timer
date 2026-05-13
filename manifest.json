@@ -40,7 +40,8 @@
       "matches": ["*://*/*"],
       "resources": [
         "web-accessible-resources/bridge.js",
-        "web-accessible-resources/normalization.js"
+        "web-accessible-resources/normalization.js",
+        "utils/pixelogic.js"
       ]
     }
   ]
