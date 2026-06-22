@@ -12,7 +12,7 @@
    - If URL matches assignment page, background asks `content/assignments.js` for W2UI snapshot data.
    - If URL matches workplace page, background asks `content/workplace.js` for current workplace identifier.
 2. **Project creation/update**
-   - Background normalizes incoming project data and stores it in `chrome.storage.sync.projects`.
+   - Background normalizes incoming project data and stores it in `chrome.storage.local.projects`.
    - Project records are upserted by `id`.
 3. **Stopwatch lifecycle**
    - On workplace load, background sends `init-stopwatch`.
@@ -20,7 +20,7 @@
 4. **Popup editing/export**
    - `content/popup.js` requests all stored projects, renders fields dynamically, allows manual update, and triggers export.
 5. **Options**
-   - `content/options.js` stores assignment/workplace URL settings and Sheets settings in sync storage.
+   - `content/options.js` stores assignment/workplace URL settings and Sheets settings in local storage.
 
 ### Module responsibilities
 - `background.js`: orchestration, storage read/write, assignment parsing, message routing, stopwatch triggering, exporting.

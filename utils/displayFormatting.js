@@ -21,7 +21,7 @@ function formatDisplayOptions(key, value) {
     case "date_due":
       formattedValue = formatDisplayDate(value);
       break;
-    case "date_assigned":
+    case "date_completed":
       formattedValue = formatDisplayDate(value);
       break;
     default:

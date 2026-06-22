@@ -10,7 +10,7 @@ function loadPixelogicModule() {
 
 async function initAssignmentsListener() {
   const pixelogic = await loadPixelogicModule();
-  const { urls = {} } = await chrome.storage.sync.get("urls");
+  const { urls = {} } = await chrome.storage.local.get("urls");
   const assignments = urls.assignments?.trim();
   if (!pixelogic.isAssignmentsUrl(window.location.href, assignments)) {
     return;

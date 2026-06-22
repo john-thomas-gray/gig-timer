@@ -3,6 +3,7 @@
 // );
 
 let normalizationModule;
+const DEFAULT_PROJECT_OPTION_VALUE = "New Project";
 
 async function loadNormalizationModule() {
   if (!normalizationModule) {
@@ -36,8 +37,10 @@ async function init() {
     return;
   }
 
+  const initialProjectId = await getInitialProjectId();
   existingProjects = await getStoredProjects();
   await buildUI(existingProjects);
+  selectProjectById(initialProjectId);
 
   projectSelect.addEventListener("change", onSelectChange);
 
@@ -59,6 +62,43 @@ async function getStoredProjects() {
         else resolve([]);
       },
     );
+  });
+}
+
+async function getInitialProjectId() {
+  const tabId = await getActiveTabId();
+
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage(
+      {
+        action: "get-latest-workspace-project-id",
+        source: "popup.js",
+        tabId,
+      },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          resolve(undefined);
+          return;
+        }
+
+        resolve(response?.projectId);
+      },
+    );
+  });
+}
+
+async function getActiveTabId() {
+  if (!chrome.tabs?.query) return undefined;
+
+  return new Promise((resolve) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (chrome.runtime.lastError) {
+        resolve(undefined);
+        return;
+      }
+
+      resolve(tabs?.[0]?.id);
+    });
   });
 }
 
@@ -107,6 +147,16 @@ function formatEpisodeLabel(project) {
   return "Unknown";
 }
 
+function selectProjectById(projectId) {
+  const select = document.getElementById("projectSelect");
+  const hasMatchingProject = [...select.options].some(
+    (option) => option.value === projectId,
+  );
+
+  select.value = hasMatchingProject ? projectId : DEFAULT_PROJECT_OPTION_VALUE;
+  onSelectChange();
+}
+
 function buildFormInputs() {
   const defaultFields = document.getElementById("defaultFields");
 
@@ -120,7 +170,7 @@ function buildFormInputs() {
     hourly_rate: "text",
     invoice_amount: "text",
     date_due: "text",
-    date_assigned: "text",
+    date_completed: "text",
     contractor: "text",
     client: "text",
   };
@@ -227,7 +277,10 @@ function setFormText() {
       continue;
     }
     const key = input.name;
-    let value = selectedProject[key];
+    let value =
+      key === "date_completed"
+        ? selectedProject.date_completed ?? selectedProject.date_assigned
+        : selectedProject[key];
 
     if (key === "runtime") value = formatTime(value);
     if (key === "rate") value = formatRate(value);
@@ -271,7 +324,7 @@ async function normalizeFormValues(rawValues) {
     workplace_url: rawValues.workplace_url?.trim() || undefined,
     season,
     episode,
-    date_assigned: module.normalizeDateInput(rawValues.date_assigned),
+    date_completed: module.normalizeDateInput(rawValues.date_completed),
     date_due: module.normalizeDateInput(rawValues.date_due),
     runtime: module.normalizeDurationInput(rawValues.runtime),
     work_time: module.normalizeDurationInput(rawValues.work_time),
@@ -315,7 +368,7 @@ async function updateProjectFromForm() {
       return;
     }
 
-    const result = await chrome.storage.sync.get("projects");
+    const result = await chrome.storage.local.get("projects");
     const projects = Array.isArray(result.projects) ? result.projects : [];
     const existingIndex = projects.findIndex((project) =>
       [previousProjectId, projectToSave.id].includes(project.id),
@@ -327,7 +380,7 @@ async function updateProjectFromForm() {
       projects.push(projectToSave);
     }
 
-    await chrome.storage.sync.set({ projects });
+    await chrome.storage.local.set({ projects });
     existingProjects = projects;
     selectedProject = projectToSave;
     setFormText();

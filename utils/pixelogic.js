@@ -4,6 +4,8 @@ const DEFAULT_PIPELINE_URLS = Object.freeze({
   assignments: `https://${PIXELOGIC_HOST}/composition-editor`,
   workplace: `https://${PIXELOGIC_HOST}/operations-manager/tasks`,
 });
+const OPERATIONS_MANAGER_TASK_PATH_PATTERN =
+  /^\/operations-manager\/tasks\/(\d+)$/;
 
 const PIXELOGIC_PROJECT_DEFAULTS = Object.freeze({
   contractor: "Pixelogic Media",
@@ -77,6 +79,14 @@ export function isAssignmentsUrl(url, configuredUrl) {
 }
 
 export function isWorkplaceUrl(url, configuredUrl) {
+  const parsed = parseUrl(url);
+  if (
+    parsed?.hostname === PIXELOGIC_HOST &&
+    parsed.pathname.startsWith("/operations-manager/tasks")
+  ) {
+    return isPixelogicOperationsManagerTaskUrl(url);
+  }
+
   return matchesPipelineUrl(url, configuredUrl, DEFAULT_PIPELINE_URLS.workplace);
 }
 
@@ -100,7 +110,7 @@ export function isPixelogicOperationsManagerTaskUrl(url) {
   const parsed = parseUrl(url);
   return (
     parsed?.hostname === PIXELOGIC_HOST &&
-    /^\/operations-manager\/tasks\/\d+/.test(parsed.pathname)
+    OPERATIONS_MANAGER_TASK_PATH_PATTERN.test(parsed.pathname)
   );
 }
 
@@ -229,10 +239,6 @@ export function parsePixelogicOperationsManagerTaskText(text, url) {
     asset_id: asset?.assetId,
     asset_version_id: asset?.versionId,
     client: findClient(text),
-    date_assigned:
-      findLabelValue(lines, "Start Date") ??
-      findLabelValue(lines, "Task Workability Date") ??
-      findLabelValue(lines, "Estimated Workability Date"),
     date_due:
       findLabelValue(lines, "Due Date") ??
       findLabelValue(lines, "Estimated Delivery Date"),
@@ -590,7 +596,7 @@ function getTaskIdFromUrl(url) {
   const parsed = parseUrl(url);
   return (
     parsed?.searchParams.get("taskId") ??
-    parsed?.pathname.match(/\/tasks\/(\d+)/)?.[1]
+    parsed?.pathname.match(OPERATIONS_MANAGER_TASK_PATH_PATTERN)?.[1]
   );
 }
 

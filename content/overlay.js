@@ -20,7 +20,7 @@ function injectOverlay() {
 
 async function initOverlayInjection() {
   const pixelogic = await loadPixelogicModule();
-  const { urls = {} } = await chrome.storage.sync.get("urls");
+  const { urls = {} } = await chrome.storage.local.get("urls");
   const assignments = urls.assignments?.trim();
   const workplace = urls.workplace?.trim();
   const currentUrl = window.location.href;

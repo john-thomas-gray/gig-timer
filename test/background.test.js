@@ -12,8 +12,11 @@ const netflixRequestRef =
 
 function createChromeMock({
   assignmentResponses,
+  legacyAssignmentSnapshot,
+  lastProjectId = "",
   projects = [],
   tabUrl = compositionUrl,
+  urls = {},
   workplaceData,
 } = {}) {
   const listeners = {
@@ -23,7 +26,7 @@ function createChromeMock({
     storageChanges: [],
   };
   const sentMessages = [];
-  const storage = { projects, urls: {} };
+  const storage = { lastProjectId, projects, urls };
   let assignmentRequestCount = 0;
   const defaultAssignmentProjects = [
     {
@@ -71,7 +74,7 @@ function createChromeMock({
             listeners.storageChanges.push(listener);
           },
         },
-        sync: {
+        local: {
           async get(keys) {
             return getStorageValues(keys);
           },
@@ -88,6 +91,15 @@ function createChromeMock({
           sentMessages.push({ tabId, ...message });
 
           if (message.action === "request-assignments-data") {
+            if (legacyAssignmentSnapshot) {
+              return {
+                type: "RETURN_W2UI_DATA",
+                payload: {
+                  snapshot: legacyAssignmentSnapshot,
+                },
+              };
+            }
+
             const responseIndex = Math.min(
               assignmentRequestCount,
               (assignmentResponses?.length ?? 1) - 1,
@@ -245,6 +257,76 @@ test("history navigation to a composition-editor project creates the project and
   }
 });
 
+test("export project stamps date completed and stores the completed field", async () => {
+  const mock = createChromeMock({
+    projects: [
+      {
+        id: "Example Series: Season 1: Episode 1",
+        title: "Example Series",
+        season: "1",
+        episode: "1",
+        contractor: "Pixelogic Media",
+        date_assigned: "2026-01-02",
+        runtime: 2400,
+        rate: 6,
+        work_time: 120,
+      },
+    ],
+  });
+  const originalFetch = globalThis.fetch;
+  const fetchCalls = [];
+  const now = new Date();
+  const expectedToday = `${now.getFullYear()}-${String(
+    now.getMonth() + 1,
+  ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  globalThis.chrome = mock.chrome;
+  globalThis.fetch = async (url, options = {}) => {
+    fetchCalls.push({
+      url,
+      body: JSON.parse(options.body),
+    });
+    return {
+      ok: true,
+      async text() {
+        return "OK";
+      },
+    };
+  };
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.runtimeMessages.length, 1),
+    );
+
+    mock.listeners.runtimeMessages[0](
+      {
+        action: "export-project-data",
+        projectId: "Example Series: Season 1: Episode 1",
+        source: "popup.js",
+      },
+      {},
+      () => {},
+    );
+
+    await waitFor(() => {
+      assert.equal(fetchCalls.length, 1);
+      assert.equal(
+        mock.storage.projects[0].id,
+        "Example Series: Season 1: Episode 1",
+      );
+      assert.equal(mock.storage.projects[0].date_completed, expectedToday);
+      assert.equal(mock.storage.projects[0].date_assigned, undefined);
+      assert.equal(fetchCalls[0].body.projectData.date_completed, expectedToday);
+      assert.equal(fetchCalls[0].body.projectData.date_assigned, undefined);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete globalThis.chrome;
+  }
+});
+
 test("composition project navigation retries URL fallback metadata until page metadata is available", async () => {
   const mock = createChromeMock({
     assignmentResponses: [[pixelogicFallbackProject], [richPixelogicProject]],
@@ -371,6 +453,188 @@ test("operations-manager task navigation stores metadata without starting the ti
         logs,
         "[Gig Timer] Workplace project stored without starting stopwatch",
       );
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("popup project lookup selects the active workspace project", async () => {
+  const mock = createChromeMock({
+    tabUrl: operationsManagerUrl,
+    workplaceData: richPixelogicProject,
+  });
+  const originalConsoleLog = console.log;
+  let response;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() => assert.equal(mock.listeners.runtimeMessages.length, 1));
+
+    mock.listeners.runtimeMessages[0](
+      {
+        action: "get-latest-workspace-project-id",
+        source: "popup.js",
+        tabId: 17,
+      },
+      {},
+      (value) => {
+        response = value;
+      },
+    );
+
+    await waitFor(() => {
+      assert.deepEqual(
+        mock.sentMessages.map((message) => message.action),
+        ["request-workplace-id"],
+      );
+      assert.equal(
+        response.projectId,
+        "Welcome to Wrexham: Season 5: Episode 54",
+      );
+      assert.equal(
+        mock.storage.lastProjectId,
+        "Welcome to Wrexham: Season 5: Episode 54",
+      );
+      assert.equal(mock.storage.projects.length, 1);
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("popup project lookup preserves edited billing fields during workspace refresh", async () => {
+  const mock = createChromeMock({
+    projects: [
+      {
+        ...richPixelogicProject,
+        id: "Welcome to Wrexham: Season 5: Episode 54",
+        invoice_amount: 360,
+        rate: 12,
+        runtime: 1800,
+        work_time: 900,
+      },
+    ],
+    tabUrl: operationsManagerUrl,
+    workplaceData: richPixelogicProject,
+  });
+  const originalConsoleLog = console.log;
+  let response;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() => assert.equal(mock.listeners.runtimeMessages.length, 1));
+
+    mock.listeners.runtimeMessages[0](
+      {
+        action: "get-latest-workspace-project-id",
+        source: "popup.js",
+        tabId: 19,
+      },
+      {},
+      (value) => {
+        response = value;
+      },
+    );
+
+    await waitFor(() => {
+      assert.equal(
+        response.projectId,
+        "Welcome to Wrexham: Season 5: Episode 54",
+      );
+      assert.equal(mock.storage.projects.length, 1);
+      assert.equal(mock.storage.projects[0].rate, 12);
+      assert.equal(mock.storage.projects[0].work_time, 900);
+      assert.equal(mock.storage.projects[0].invoice_amount, 480);
+      assert.equal(mock.storage.projects[0].hourly_rate, 1920);
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("popup project lookup falls back to the most recently visited workspace", async () => {
+  const mock = createChromeMock({
+    lastProjectId: "Recent Project",
+    projects: [{ id: "Recent Project", title: "Recent Project" }],
+    tabUrl: "https://example.test/not-a-workspace",
+  });
+  let response;
+  globalThis.chrome = mock.chrome;
+
+  try {
+    await importFreshBackground();
+    await waitFor(() => assert.equal(mock.listeners.runtimeMessages.length, 1));
+
+    mock.listeners.runtimeMessages[0](
+      {
+        action: "get-latest-workspace-project-id",
+        source: "popup.js",
+        tabId: 18,
+      },
+      {},
+      (value) => {
+        response = value;
+      },
+    );
+
+    await waitFor(() => {
+      assert.equal(response.projectId, "Recent Project");
+      assert.equal(mock.sentMessages.length, 0);
+    });
+  } finally {
+    delete globalThis.chrome;
+  }
+});
+
+test("legacy assignment runtime is converted from minutes to seconds", async () => {
+  const legacyAssignmentsUrl = "https://legacy.example.test/assignments";
+  const mock = createChromeMock({
+    legacyAssignmentSnapshot: {
+      records: [
+        {
+          alpha_clients: "Legacy Client",
+          alpha_source_materials: [{ program_runtime: 40.45 }],
+          created_at: "2026-05-18",
+          due_date: "2026-05-20",
+          title: "Legacy Show: Season 1: Episode 2",
+        },
+      ],
+    },
+    tabUrl: legacyAssignmentsUrl,
+    urls: { assignments: legacyAssignmentsUrl },
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.historyStateUpdated.length, 1),
+    );
+
+    mock.listeners.historyStateUpdated[0]({
+      frameId: 0,
+      tabId: 16,
+      url: legacyAssignmentsUrl,
+    });
+
+    await waitFor(() => {
+      assert.equal(mock.storage.projects.length, 1);
+      assert.equal(mock.storage.projects[0].client, "Legacy Client");
+      assert.equal(
+        mock.storage.projects[0].id,
+        "Legacy Show: Season 1: Episode 2",
+      );
+      assert.equal(mock.storage.projects[0].runtime, 2427);
     });
   } finally {
     console.log = originalConsoleLog;

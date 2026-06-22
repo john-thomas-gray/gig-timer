@@ -11,7 +11,7 @@ let isIdle = false;
 let pixelogicModulePromise;
 
 const LOG_PREFIX = "[Gig Timer]";
-const IDLE_THRESHOLD_SECONDS = 31;
+const IDLE_THRESHOLD_SECONDS = 10 * 60;
 let lastActionAt = Date.now();
 
 const formatTimestamp = (ms) => new Date(ms).toLocaleTimeString();
@@ -23,7 +23,7 @@ function loadPixelogicModule() {
 
 async function initStopwatchScript() {
   const pixelogic = await loadPixelogicModule();
-  const { urls = {} } = await chrome.storage.sync.get("urls");
+  const { urls = {} } = await chrome.storage.local.get("urls");
   const workplace = urls.workplace?.trim();
   if (
     !pixelogic.isTimerPageUrl(window.location.href, { workplace }) &&

@@ -125,6 +125,8 @@ function normalizeDate(dateString) {
   const cleaned = cleanString(dateString);
   if (!cleaned) return undefined;
 
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) return cleaned;
+
   const date = new Date(cleaned);
   if (Number.isNaN(date.getTime())) return undefined;
 
@@ -292,7 +294,7 @@ const projectTemplate = {
   id: undefined,
   client: undefined,
   contractor: undefined,
-  date_assigned: undefined,
+  date_completed: undefined,
   date_due: undefined,
   episode: undefined,
   hourly_rate: undefined,
@@ -311,6 +313,7 @@ export function normalizeProjectData(project) {
       ...projectTemplate,
       ...project,
     };
+    delete normalizedProject.date_assigned;
     const parsedTitle = parseTitleAndEpisode(normalizedProject.title);
     const parsedId = parseTitleAndEpisode(normalizedProject.id);
     const parsedEpisode = parseSeasonEpisodeInput(normalizedProject.episode);
@@ -347,7 +350,7 @@ export function normalizeProjectData(project) {
           });
           break;
 
-        case "date_assigned":
+        case "date_completed":
         case "date_due":
           value = normalizeDate(value);
           break;

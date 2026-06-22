@@ -42,6 +42,33 @@ test("default Pixelogic URLs match the new composition-editor and task routes", 
   );
 });
 
+test("operations-manager task URL detection requires a numeric final path segment", () => {
+  assert.equal(
+    isWorkplaceUrl("https://phelix.pixelogicmedia.com/operations-manager/tasks/14522629"),
+    true,
+  );
+  assert.equal(
+    isWorkplaceUrl("https://phelix.pixelogicmedia.com/operations-manager/tasks/14522629?tab=details"),
+    true,
+  );
+  assert.equal(
+    isWorkplaceUrl("https://phelix.pixelogicmedia.com/operations-manager/tasks"),
+    false,
+  );
+  assert.equal(
+    isWorkplaceUrl("https://phelix.pixelogicmedia.com/operations-manager/tasks/not-a-task"),
+    false,
+  );
+  assert.equal(
+    isWorkplaceUrl("https://phelix.pixelogicmedia.com/operations-manager/tasks/14522629/details"),
+    false,
+  );
+  assert.equal(
+    isProjectMetadataPageUrl("https://phelix.pixelogicmedia.com/operations-manager/tasks/14522629/details"),
+    false,
+  );
+});
+
 test("legacy bridge injection is skipped for new Pixelogic routes", () => {
   assert.equal(shouldInjectLegacyAssignmentsBridge(compositionUrl), false);
   assert.equal(shouldInjectLegacyAssignmentsBridge(operationsManagerUrl), false);
@@ -283,7 +310,6 @@ P2P | [Version 2]
     asset_version_id: "10876414",
     client: "Disney",
     contractor: "Pixelogic Media",
-    date_assigned: "2026-05-12 16:24",
     date_due: "2026-05-16 01:44",
     episode: "5",
     language: "English (US)",
@@ -298,11 +324,12 @@ P2P | [Version 2]
   const normalized = normalizeProjectData(project);
   assert.equal(normalized.id, "Welcome to Wrexham: Season 5: Episode 5");
   assert.equal(normalized.date_due, "2026-05-16");
-  assert.equal(normalized.date_assigned, "2026-05-12");
+  assert.equal(normalized.date_completed, undefined);
+  assert.equal(normalized.date_assigned, undefined);
 });
 
 test("document text collection pairs Pixelogic input values with nearby labels", () => {
-  const label = { textContent: "Start Date:", previousElementSibling: null };
+  const label = { textContent: "Due Date:", previousElementSibling: null };
   const control = {
     parentElement: null,
     previousElementSibling: label,
@@ -318,8 +345,8 @@ test("document text collection pairs Pixelogic input values with nearby labels",
   };
   const doc = {
     body: {
-      innerText: `Start Date:
-Task Workability Date:
+      innerText: `Due Date:
+Estimated Delivery Date:
 2026-05-11 15:26`,
     },
     querySelectorAll: () => [input],
@@ -331,7 +358,7 @@ Task Workability Date:
     operationsManagerUrl,
   );
 
-  assert.equal(project.date_assigned, "2026-05-12 16:24");
+  assert.equal(project.date_due, "2026-05-12 16:24");
 });
 
 test("nearby task date labels win over broad form container labels", () => {
@@ -339,7 +366,7 @@ test("nearby task date labels win over broad form container labels", () => {
   const form = {
     querySelector: () => broadFormLabel,
   };
-  const label = { textContent: "Start Date:", previousElementSibling: null };
+  const label = { textContent: "Due Date:", previousElementSibling: null };
   const control = {
     parentElement: form,
     previousElementSibling: label,
@@ -357,7 +384,7 @@ test("nearby task date labels win over broad form container labels", () => {
     body: {
       innerText: `Task Type:
 Dubbing / Audio Description / Scripting / Writing
-Start Date:
+Due Date:
 Completion Date:`,
     },
     querySelectorAll: () => [input],
@@ -370,11 +397,11 @@ Completion Date:`,
   );
 
   assert.equal(project.task_type, "Dubbing / Audio Description / Scripting / Writing");
-  assert.equal(project.date_assigned, "2026-05-12 16:24");
+  assert.equal(project.date_due, "2026-05-12 16:24");
 });
 
 test("document text collection reads Pixelogic date values from input attributes", () => {
-  const label = { textContent: "Start Date:", previousElementSibling: null };
+  const label = { textContent: "Due Date:", previousElementSibling: null };
   const control = {
     parentElement: null,
     previousElementSibling: label,
@@ -391,8 +418,8 @@ test("document text collection reads Pixelogic date values from input attributes
   };
   const doc = {
     body: {
-      innerText: `Start Date:
-Task Workability Date:
+      innerText: `Due Date:
+Estimated Delivery Date:
 2026-05-11 15:26`,
     },
     querySelectorAll: () => [input],
@@ -404,7 +431,7 @@ Task Workability Date:
     operationsManagerUrl,
   );
 
-  assert.equal(project.date_assigned, "2026-05-12 16:24");
+  assert.equal(project.date_due, "2026-05-12 16:24");
 });
 
 test("workplace task header prefix does not change the project id", () => {

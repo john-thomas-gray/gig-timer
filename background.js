@@ -22,7 +22,7 @@ const storageCache = { count: 0, urls: {}, lastProjectId: "" };
 
 const sheetsData = {
   deploymentId:
-    "AKfycbzlwJIjdvhhUjHa_wUI6mVdMiv10FZKEckMjzWvlyRiUaYYPOOgJeGFKOT1Fb8bscU7Iw",
+    "AKfycbzzeOJrRpEXNX91J593MUmkcaXPwwT_fmLbnSf7AGj2foMoc8Phq3VVeGe0gjuMcnPbkw",
   spreadSheetId: "1q-BG4u62IEdBW1ewPEkyd8V3scm4Lsbcgl30OdtquCo",
   spreadSheetName: "Sheet2",
 };
@@ -41,7 +41,7 @@ let hasAddedListeners = false;
 init();
 
 async function initStorageCache() {
-  const items = await chrome.storage.sync.get([
+  const items = await chrome.storage.local.get([
     "count",
     "urls",
     "lastProjectId",
@@ -58,7 +58,7 @@ async function addListeners() {
   if (hasAddedListeners) return;
   hasAddedListeners = true;
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "sync") {
+    if (area === "local") {
       for (const key in changes) {
         if (storageCache.hasOwnProperty(key)) {
           storageCache[key] = changes[key].newValue;
@@ -112,7 +112,7 @@ async function addListeners() {
             const projectId =
               getPreferredProjectId(project, existingProject) ?? project.id;
             storageCache.lastProjectId = projectId;
-            await chrome.storage.sync.set({ lastProjectId: projectId });
+            await chrome.storage.local.set({ lastProjectId: projectId });
             console.log(
               `${LOG_PREFIX} Composition project stored; starting stopwatch`,
               { projectId, tabId },
@@ -135,7 +135,7 @@ async function addListeners() {
         const project = await getWorkplaceProject("webNavigation", tabId);
         if (project?.id) {
           storageCache.lastProjectId = project.id;
-          await chrome.storage.sync.set({ lastProjectId: project.id });
+          await chrome.storage.local.set({ lastProjectId: project.id });
           await upsertProjects(project);
           await initStopwatch(tabId);
         } else {
@@ -153,7 +153,7 @@ async function addListeners() {
         console.log(`${LOG_PREFIX} Workplace page recognized`, { tabId, url });
         const project = await getWorkplaceProject("webNavigation", tabId);
         if (project?.id) {
-          await chrome.storage.sync.set({ lastProjectId: project.id });
+          await chrome.storage.local.set({ lastProjectId: project.id });
           await upsertProjects(project);
           if (shouldShowStopwatch) {
             console.log(
@@ -219,9 +219,9 @@ async function addListeners() {
             throw new Error("Workplace ID not found");
           }
           storageCache.lastProjectId = workplaceId;
-          await chrome.storage.sync.set({ lastProjectId: workplaceId });
+          await chrome.storage.local.set({ lastProjectId: workplaceId });
           await upsertProjects({
-            ...(currentProject ?? {}),
+            ...(project ?? currentProject ?? {}),
             id: workplaceId,
             work_time: workTimeValue,
             invoice_amount: invoiceAmount,
@@ -255,10 +255,30 @@ async function addListeners() {
       return true;
     }
 
-    if (msg.action === "export-project-data" && msg.source === "popup.js") {
-      getProjects(msg.projectId).then((projectData) => {
-        exportProjectData(projectData, sheetsData);
+    if (
+      msg.action === "get-latest-workspace-project-id" &&
+      msg.source === "popup.js"
+    ) {
+      getLatestWorkspaceProjectId(msg.tabId).then((projectId) => {
+        sendResponse({ projectId });
       });
+      return true;
+    }
+
+    if (msg.action === "export-project-data" && msg.source === "popup.js") {
+      (async () => {
+        const projectData = await getProjects(msg.projectId);
+        if (!projectData) return;
+
+        const completedProject = normalizeProjectData({
+          ...projectData,
+          date_completed: todayIsoDate(),
+        });
+        delete completedProject.date_assigned;
+
+        await upsertProjects(completedProject);
+        await exportProjectData(completedProject, sheetsData);
+      })();
     }
   });
 }
@@ -276,7 +296,7 @@ function isNetflixAuthoringUrl(url) {
 }
 
 async function getProjects(id) {
-  const result = await chrome.storage.sync.get("projects");
+  const result = await chrome.storage.local.get("projects");
   const projects = Array.isArray(result.projects) ? result.projects : [];
 
   if (!id) return projects;
@@ -306,7 +326,7 @@ async function getStoredProjectValue(key, tabId) {
     if (project?.id && id) {
       await upsertProjects({ ...project, id });
       storageCache.lastProjectId = id;
-      await chrome.storage.sync.set({ lastProjectId: id });
+      await chrome.storage.local.set({ lastProjectId: id });
     }
 
     const currentProject =
@@ -324,6 +344,53 @@ async function getStoredProjectValue(key, tabId) {
 async function getWorkplaceId(calledBy, tabIdOverride) {
   const project = await getWorkplaceProject(calledBy, tabIdOverride);
   return project?.id ?? storageCache.lastProjectId ?? undefined;
+}
+
+async function getLatestWorkspaceProjectId(tabId) {
+  const currentWorkspaceProjectId =
+    await getCurrentWorkspaceProjectId(tabId);
+  return currentWorkspaceProjectId ?? storageCache.lastProjectId ?? undefined;
+}
+
+async function getCurrentWorkspaceProjectId(tabId) {
+  if (!tabId) return undefined;
+
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!isCurrentWorkspaceUrl(tab?.url)) return undefined;
+
+    const project = await getWorkplaceProject(
+      "getCurrentWorkspaceProjectId",
+      tabId,
+    );
+    const existingProject = project
+      ? await getMatchingProject(project)
+      : undefined;
+    const projectId = getPreferredProjectId(project, existingProject);
+
+    if (!projectId) return undefined;
+
+    if (project?.id) {
+      await upsertProjects({ ...project, id: projectId });
+    }
+
+    storageCache.lastProjectId = projectId;
+    await chrome.storage.local.set({ lastProjectId: projectId });
+    return projectId;
+  } catch (e) {
+    console.error("Failed to resolve current workspace project:", e);
+    return undefined;
+  }
+}
+
+function isCurrentWorkspaceUrl(url) {
+  const workplace = storageCache.urls?.workplace?.trim();
+
+  return (
+    isWorkplaceUrl(url, workplace) ||
+    isPixelogicCompositionProjectUrl(url) ||
+    isNetflixAuthoringUrl(url)
+  );
 }
 
 async function getWorkplaceProject(calledBy, tabIdOverride) {
@@ -507,6 +574,16 @@ function isPixelogicFallbackProjectValue(value) {
 function mergeProjectData(existingProject, nextProject) {
   const merged = { ...existingProject };
   Object.keys(nextProject).forEach((key) => {
+    if (key === "date_assigned") return;
+
+    if (
+      key === "rate" &&
+      isDefinedProjectValue(existingProject[key]) &&
+      isDefinedProjectValue(nextProject[key])
+    ) {
+      return;
+    }
+
     if (
       key === "work_time" &&
       Number(nextProject[key]) === 0 &&
@@ -526,10 +603,29 @@ function mergeProjectData(existingProject, nextProject) {
 
     if (isDefinedProjectValue(nextProject[key])) {
       merged[key] = nextProject[key];
+      if (key === "date_completed") delete merged.date_assigned;
     }
   });
 
+  const invoiceAmount = calculateInvoiceAmount(merged.rate, merged.runtime);
+  if (invoiceAmount !== undefined) {
+    merged.invoice_amount = invoiceAmount;
+
+    const hourlyRate = calculateHourlyRate(invoiceAmount, merged.work_time);
+    if (hourlyRate !== undefined) {
+      merged.hourly_rate = hourlyRate;
+    }
+  }
+
   return merged;
+}
+
+function todayIsoDate() {
+  const now = new Date();
+  const year = String(now.getFullYear());
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 async function upsertProjects(projects) {
@@ -573,7 +669,7 @@ async function upsertProjects(projects) {
     totalProjects: updatedProjects.length,
   });
 
-  await chrome.storage.sync.set({ projects: updatedProjects });
+  await chrome.storage.local.set({ projects: updatedProjects });
 }
 
 function matchesProject(existingProject, nextProject) {
@@ -754,7 +850,6 @@ function parseAssignmentData(snapshot) {
   }
   const w2ToProjectMap = {
     alpha_clients: "client",
-    created_at: "date_assigned",
     due_date: "date_due",
     title: "title",
   };
@@ -770,7 +865,7 @@ function parseAssignmentData(snapshot) {
     });
 
     projectWithConvertedKeys["runtime"] = Math.round(
-      object.alpha_source_materials?.[0]?.program_runtime || 0,
+      (object.alpha_source_materials?.[0]?.program_runtime || 0) * 60,
     );
     return projectWithConvertedKeys;
   });

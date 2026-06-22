@@ -119,16 +119,6 @@ async function getNetflixProjectData() {
     "date due",
     "deadline",
   ]);
-  const visibleAssignedDate = findVisibleDate([
-    "assigned",
-    "date assigned",
-    "created",
-  ]);
-  const dateAssigned =
-    firstValue(
-      findByKey([info, projectInfo, documentMeta], ASSIGNED_DATE_KEYS),
-      visibleAssignedDate,
-    ) ?? todayIsoDate();
 
   return {
     ...NETFLIX_CONTRACTOR_DEFAULTS,
@@ -155,7 +145,6 @@ async function getNetflixProjectData() {
       findByKey([info, projectInfo, documentMeta], DUE_DATE_KEYS),
       visibleDueDate,
     ),
-    date_assigned: dateAssigned,
     workplace_url: window.location.href,
   };
 }
@@ -206,13 +195,6 @@ const RUNTIME_KEYS = [
   "runTime",
 ];
 const DUE_DATE_KEYS = ["dueDate", "dateDue", "deadline", "dueAt", "due_at"];
-const ASSIGNED_DATE_KEYS = [
-  "dateAssigned",
-  "assignedDate",
-  "assignedAt",
-  "createdAt",
-  "created_at",
-];
 
 function firstValue(...values) {
   for (const value of values.flat()) {
@@ -358,17 +340,9 @@ function findVisibleValue(labels, valuePattern) {
   return undefined;
 }
 
-function todayIsoDate() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 async function initWorkplaceListener() {
   const pixelogic = await loadPixelogicModule();
-  const { urls = {} } = await chrome.storage.sync.get("urls");
+  const { urls = {} } = await chrome.storage.local.get("urls");
   const workplace = urls.workplace?.trim();
   if (
     !pixelogic.isProjectMetadataPageUrl(window.location.href, { workplace }) &&

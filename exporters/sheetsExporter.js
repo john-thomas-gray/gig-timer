@@ -29,10 +29,10 @@ export async function exportProjectData(projectData, sheetsData) {
           : "Sheet responded without OK confirmation."
       );
     }
-    console.log("Popup sync success:", responseText || "OK");
+    console.log("Project export success:", responseText || "OK");
     return responseText || "OK";
   } catch (error) {
-    console.error("Popup sync failed:", error);
+    console.error("Project export failed:", error);
     throw error;
   }
 }

@@ -8,7 +8,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const workplaceDisplay = document.getElementById("displayWorkplace");
   const submitUrls = document.getElementById("submitURLs");
 
-  const { urls = {} } = await chrome.storage.sync.get("urls");
+  const { urls = {} } = await chrome.storage.local.get("urls");
   assignmentsInput.value = urls.assignments ?? pipelineUrlDefaults.assignments;
 
   assignmentsDisplay.textContent = assignmentsInput.value;
@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const data = { assignments, workplace };
 
     try {
-      await chrome.storage.sync.set({ urls: data });
+      await chrome.storage.local.set({ urls: data });
       console.log("Saved URLs:", data);
     } catch (error) {
       console.error("Error saving URLs:", error);
@@ -35,7 +35,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const sheetsSpreadSheetName = document.getElementById("sheetsSpreadSheetName");
   const submitSheets = document.getElementById("submitSheets");
 
-  const { sheetsData = {} } = await chrome.storage.sync.get("sheetsData");
+  const { sheetsData = {} } = await chrome.storage.local.get("sheetsData");
   sheetsDeploymentId.value = sheetsData.deploymentId ?? "";
   sheetsSpreadSheetId.value = sheetsData.spreadSheetId ?? "";
   sheetsSpreadSheetName.value = sheetsData.spreadSheetName ?? "";
@@ -46,7 +46,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const spreadSheetName = sheetsSpreadSheetName?.value?.trim() ?? "";
     const next = { deploymentId, spreadSheetId, spreadSheetName };
     try {
-      await chrome.storage.sync.set({ sheetsData: next });
+      await chrome.storage.local.set({ sheetsData: next });
       console.log("Saved Google Sheets settings");
     } catch (error) {
       console.error("Error saving Google Sheets settings:", error);
@@ -60,18 +60,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   const contractorInput = document.getElementById("contractorInput");
   const clientInput = document.getElementById("clientInput");
   const workplaceUrlInput = document.getElementById("workplaceUrlInput");
-  const dateAssignedInput = document.getElementById("dateAssignedInput");
-  if (!dateAssignedInput.value) {
+  const dateCompletedInput = document.getElementById("dateCompletedInput");
+  if (!dateCompletedInput.value) {
     const today = new Date();
     const yyyy = String(today.getFullYear());
     const mm = String(today.getMonth() + 1).padStart(2, "0");
     const dd = String(today.getDate()).padStart(2, "0");
-    dateAssignedInput.value = `${yyyy}-${mm}-${dd}`;
+    dateCompletedInput.value = `${yyyy}-${mm}-${dd}`;
   }
 
   submitNewProject.addEventListener("click", async () => {
     console.log("submit");
-    const { projects = [] } = await chrome.storage.sync.get("projects");
+    const { projects = [] } = await chrome.storage.local.get("projects");
     const workplaceUrl = workplaceUrlInput?.value ?? null;
     const existingProject = projects.find(
       (p) => p.workplace_url === workplaceUrl,
@@ -87,8 +87,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     const contractor =
       contractorInput?.value ?? existingProject?.contractor ?? null;
     const client = clientInput?.value ?? existingProject?.client ?? null;
-    const date_assigned =
-      dateAssignedInput?.value ?? existingProject?.date_assigned ?? null;
+    const date_completed =
+      dateCompletedInput?.value ??
+      existingProject?.date_completed ??
+      existingProject?.date_assigned ??
+      null;
     const invoice_amount =
       runtime != null && rate != null
         ? runtime * rate
@@ -106,7 +109,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       contractor,
       client,
       workplace_url: workplaceUrl,
-      date_assigned,
+      date_completed,
       invoice_amount,
       work_time,
       hourly_rate: hourlyRate,
@@ -119,7 +122,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     try {
-      await chrome.storage.sync.set({ projects: projects });
+      await chrome.storage.local.set({ projects: projects });
     } catch (error) {
       console.error("Error saving project:", error);
     }

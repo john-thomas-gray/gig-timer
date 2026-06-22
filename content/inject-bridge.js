@@ -20,7 +20,7 @@ function injectBridge() {
 
 async function initBridgeInjection() {
   const pixelogic = await loadPixelogicModule();
-  const { urls = {} } = await chrome.storage.sync.get("urls");
+  const { urls = {} } = await chrome.storage.local.get("urls");
   const assignments = urls.assignments?.trim();
   const currentUrl = window.location.href;
   const shouldRun = pixelogic.shouldInjectLegacyAssignmentsBridge(

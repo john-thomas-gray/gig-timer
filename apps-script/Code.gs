@@ -4,10 +4,11 @@ const CONFIG = {
   spreadsheetId: "1q-BG4u62IEdBW1ewPEkyd8V3scm4Lsbcgl30OdtquCo",
   defaultSheetName: "Sheet2",
   colorMapPropertyKey: "GIG_TIMER_SHOW_COLOR_MAP_V1",
+  monthlyArchiveTriggerHour: 2,
 };
 
 const COLUMNS = [
-  { key: "date_assigned", header: "Date Assigned", type: "date" },
+  { key: "date_completed", header: "Date Completed", type: "date" },
   { key: "title", header: "Title", type: "text" },
   { key: "season", header: "Season", type: "integer" },
   { key: "episode", header: "Episode", type: "integer" },
@@ -21,6 +22,7 @@ const COLUMNS = [
 ];
 
 const DROPPED_COLUMN_KEYS = new Set([
+  "date_assigned",
   "date_booked",
   "date_due",
   "id",
@@ -34,6 +36,7 @@ const HEADER_ALIASES = {
   client: ["client"],
   contractor: ["contractor"],
   date_booked: ["date booked", "date_booked", "booked"],
+  date_completed: ["date completed", "date_completed", "completed", "completion date"],
   date_assigned: ["date assigned", "date_assigned", "assigned", "assigned date"],
   date_due: ["date due", "date_due", "due", "due date"],
   episode: ["episode", "episode number", "episode_number"],
@@ -92,18 +95,131 @@ function doGet() {
   return ContentService.createTextOutput("Gig Timer endpoint is live.");
 }
 
+function archivePreviousMonthAssignments() {
+  const now = new Date();
+  return archiveRowsForMonth_(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+}
+
+function backfillMonthlyArchiveTabsUpToMay2026() {
+  return backfillMonthlyArchiveTabsBefore_(new Date(2026, 4, 1));
+}
+
+function installMonthlyArchiveTrigger() {
+  deleteMonthlyArchiveTriggers_();
+  ScriptApp.newTrigger("archivePreviousMonthAssignments")
+    .timeBased()
+    .onMonthDay(1)
+    .atHour(CONFIG.monthlyArchiveTriggerHour)
+    .create();
+}
+
+function deleteMonthlyArchiveTriggers_() {
+  ScriptApp.getProjectTriggers()
+    .filter((trigger) => trigger.getHandlerFunction() === "archivePreviousMonthAssignments")
+    .forEach((trigger) => ScriptApp.deleteTrigger(trigger));
+}
+
+function backfillMonthlyArchiveTabsBefore_(exclusiveEndMonth) {
+  const sourceData = getArchiveSourceData_();
+  const monthStartsByKey = {};
+
+  sourceData.rows.forEach((row) => {
+    const monthStart = getMonthStart_(row.date_completed);
+    if (!monthStart || monthStart >= exclusiveEndMonth) return;
+    monthStartsByKey[getMonthKey_(monthStart)] = monthStart;
+  });
+
+  return Object.keys(monthStartsByKey)
+    .sort()
+    .map((key) => archiveRowsForMonth_(monthStartsByKey[key], sourceData));
+}
+
+function archiveRowsForMonth_(monthDate, sourceData) {
+  const monthStart = getMonthStart_(monthDate);
+  if (!monthStart) throw new Error("A valid month date is required.");
+
+  const data = sourceData || getArchiveSourceData_();
+  const rows = data.rows
+    .filter((row) => isDateInMonth_(row.date_completed, monthStart))
+    .sort(compareProjects_);
+  const sheetName = formatArchiveSheetName_(monthStart);
+  const archiveSheet = getOrCreateSheet_(data.spreadsheet, sheetName);
+
+  archiveSheet.clear();
+  writeProjects_(archiveSheet, rows, data.table);
+
+  return {
+    month: getMonthKey_(monthStart),
+    sheetName,
+    rowCount: rows.length,
+  };
+}
+
+function getArchiveSourceData_() {
+  const spreadsheet = getSpreadsheet_({});
+  const sourceSheet =
+    spreadsheet.getSheetByName(CONFIG.defaultSheetName) || spreadsheet.getSheets()[0];
+  const table = getTable_(sourceSheet);
+  const headerMap = buildHeaderMap_(table.headers);
+  if (
+    headerMap.date_completed === undefined &&
+    headerMap.date_assigned === undefined &&
+    headerMap.date_booked === undefined
+  ) {
+    throw new Error('Source sheet must include a "Date Completed" column.');
+  }
+
+  return {
+    spreadsheet,
+    table,
+    rows: getExistingProjectsFromTable_(table),
+  };
+}
+
+function getOrCreateSheet_(spreadsheet, sheetName) {
+  return spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+}
+
+function getMonthStart_(value) {
+  const date = normalizeDate_(value);
+  if (!date) return "";
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function getMonthKey_(date) {
+  return `${date.getFullYear()}-${formatArchiveSheetName_(date)}`;
+}
+
+function isDateInMonth_(value, monthStart) {
+  const date = normalizeDate_(value);
+  return (
+    date &&
+    date.getFullYear() === monthStart.getFullYear() &&
+    date.getMonth() === monthStart.getMonth()
+  );
+}
+
+function formatArchiveSheetName_(date) {
+  return String(date.getMonth() + 1).padStart(2, "0");
+}
+
 function parsePayload_(e) {
   const raw = e && e.postData && e.postData.contents;
   if (raw) return JSON.parse(raw);
   return (e && e.parameter) || {};
 }
 
-function getTargetSheet_(payload) {
-  const spreadsheetId = CONFIG.spreadsheetId || payload.spreadSheetId;
+function getSpreadsheet_(payload) {
+  const spreadsheetId = CONFIG.spreadsheetId || (payload && payload.spreadSheetId);
   const spreadsheet = spreadsheetId
     ? SpreadsheetApp.openById(spreadsheetId)
     : SpreadsheetApp.getActiveSpreadsheet();
   if (!spreadsheet) throw new Error("No target spreadsheet found.");
+  return spreadsheet;
+}
+
+function getTargetSheet_(payload) {
+  const spreadsheet = getSpreadsheet_(payload);
 
   const sheetName =
     payload.spreadSheetName || CONFIG.defaultSheetName || spreadsheet.getSheets()[0].getName();
@@ -223,7 +339,9 @@ function normalizeProject_(rawProject, options) {
       parsedTitle.episode,
     project.season,
   );
-  project.date_assigned = normalizeDate_(project.date_assigned || project.date_booked);
+  project.date_completed = normalizeDate_(
+    project.date_completed || project.date_assigned || project.date_booked,
+  );
   project.runtime = normalizeSeconds_(
     project.runtime,
     project.__displayByKey && project.__displayByKey.runtime,
@@ -318,7 +436,7 @@ function buildProjectId_(project) {
 
 function compareProjects_(a, b) {
   return (
-    compareDates_(a.date_assigned, b.date_assigned) ||
+    compareDates_(a.date_completed, b.date_completed) ||
     String(a.title || "").localeCompare(String(b.title || "")) ||
     compareNumbers_(a.season, b.season) ||
     compareNumbers_(a.episode, b.episode)
@@ -348,8 +466,8 @@ function mergeHeaders_(existingHeaders) {
     if (!header) return;
 
     const key = resolveKeyForHeader_(header);
-    if (key === "date_booked") {
-      pushHeaderOnce_(headers, "Date Assigned");
+    if (key === "date_booked" || key === "date_assigned") {
+      pushHeaderOnce_(headers, "Date Completed");
       return;
     }
 
@@ -587,7 +705,17 @@ function normalizeDate_(value) {
     return Number.isNaN(value.getTime()) ? "" : value;
   }
 
-  const date = new Date(value);
+  const text = cleanText_(value);
+  const dateOnlyMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    return new Date(
+      Number(dateOnlyMatch[1]),
+      Number(dateOnlyMatch[2]) - 1,
+      Number(dateOnlyMatch[3]),
+    );
+  }
+
+  const date = new Date(text);
   return Number.isNaN(date.getTime()) ? "" : date;
 }
 
