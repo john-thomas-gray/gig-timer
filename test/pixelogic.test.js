@@ -170,6 +170,7 @@ test("programmatically injected content scripts do not use static imports", () =
   const webAccessibleResources = manifest.web_accessible_resources.flatMap(
     (entry) => entry.resources,
   );
+  assert.ok(webAccessibleResources.includes("utils/netflix.js"));
   assert.ok(webAccessibleResources.includes("utils/pixelogic.js"));
 });
 
@@ -244,7 +245,7 @@ Audio Description English (US) [ OM-9508697 ] - 0
     assignment_url: compositionUrl,
     asset_id: "OM-9508691",
     asset_version_id: "10810824",
-    contractor: "Pixelogic Media",
+    contractor: "Pixelogic",
     episode: "54",
     frame_rate: "23.976",
     language: "English (US)",
@@ -309,7 +310,7 @@ P2P | [Version 2]
     asset_id: "OM-9508691",
     asset_version_id: "10876414",
     client: "Disney",
-    contractor: "Pixelogic Media",
+    contractor: "Pixelogic",
     date_due: "2026-05-16 01:44",
     episode: "5",
     language: "English (US)",

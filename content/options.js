@@ -97,9 +97,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         ? runtime * rate
         : (existingProject?.invoice_amount ?? null);
     const work_time = existingProject?.work_time ?? 0;
+    const parsedWorkTime = Number(work_time);
     const hourlyRate =
-      invoice_amount != null && work_time != null
-        ? +((invoice_amount / Math.round(+work_time)) * 60).toFixed(2)
+      invoice_amount != null &&
+      Number.isFinite(parsedWorkTime) &&
+      parsedWorkTime > 0
+        ? +((invoice_amount / parsedWorkTime) * 60).toFixed(2)
         : null;
 
     const data = {

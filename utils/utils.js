@@ -22,16 +22,20 @@ export const normalizeDurationMap = (raw) => {
 
 export const formatDurationForDisplay = (durationMs) => {
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
-    return "00:00:00";
+    return "00:00:00:00";
   }
-  const totalSeconds = Math.max(0, Math.round(durationMs / 1_000));
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
-  const seconds = totalSeconds % 60;
+  const totalCentiseconds = Math.max(0, Math.floor(durationMs / 10));
+  const hours = Math.floor(totalCentiseconds / 360_000);
+  const minutes = Math.floor((totalCentiseconds % 360_000) / 6_000);
+  const seconds = Math.floor((totalCentiseconds % 6_000) / 100);
+  const centiseconds = totalCentiseconds % 100;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
     2,
     "0"
-  )}:${String(seconds).padStart(2, "0")}`;
+  )}:${String(seconds).padStart(2, "0")}:${String(centiseconds).padStart(
+    2,
+    "0"
+  )}`;
 };
 
 export const updateWorkTimeValueDisplay = (

@@ -8,7 +8,7 @@ const OPERATIONS_MANAGER_TASK_PATH_PATTERN =
   /^\/operations-manager\/tasks\/(\d+)$/;
 
 const PIXELOGIC_PROJECT_DEFAULTS = Object.freeze({
-  contractor: "Pixelogic Media",
+  contractor: "Pixelogic",
   rate: 6,
 });
 

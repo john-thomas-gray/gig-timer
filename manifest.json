@@ -41,6 +41,7 @@
       "resources": [
         "web-accessible-resources/bridge.js",
         "web-accessible-resources/normalization.js",
+        "utils/netflix.js",
         "utils/pixelogic.js"
       ]
     }

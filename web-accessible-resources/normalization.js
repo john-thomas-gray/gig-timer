@@ -159,7 +159,7 @@ export function calculateInvoiceAmount(rate, runtime) {
   return roundTo(numericRate * runtimeRounded, 2);
 }
 
-export function normalizeDurationInput(value) {
+export function normalizeDurationInput(value, frameRate) {
   if (value === undefined || value === null) return undefined;
   const trimmed = String(value).trim();
   if (!trimmed) return undefined;
@@ -169,12 +169,29 @@ export function normalizeDurationInput(value) {
   }
 
   const parts = trimmed.split(":");
-  if (parts.length !== 4 || parts.some((part) => !/^\d+$/.test(part))) {
+  if (parts.some((part) => !/^\d+$/.test(part))) {
     return undefined;
   }
 
-  const [days, hours, minutes, seconds] = parts.map((part) => Number(part));
-  return days * 86400 + hours * 3600 + minutes * 60 + seconds;
+  if (parts.length === 3) {
+    const [hours, minutes, seconds] = parts.map((part) => Number(part));
+    return hours * 3600 + minutes * 60 + seconds;
+  }
+
+  if (parts.length !== 4) {
+    return undefined;
+  }
+
+  const numericFrameRate = Number(frameRate);
+  if (Number.isFinite(numericFrameRate) && numericFrameRate > 0) {
+    const [hours, minutes, seconds, frames] = parts.map((part) => Number(part));
+    return hours * 3600 + minutes * 60 + seconds + frames / numericFrameRate;
+  }
+
+  const [hours, minutes, seconds, centiseconds] = parts.map((part) =>
+    Number(part)
+  );
+  return hours * 3600 + minutes * 60 + seconds + centiseconds / 100;
 }
 
 export function normalizeMoneyInput(value) {

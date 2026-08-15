@@ -15,9 +15,12 @@ import {
   isTimerPageUrl,
   isWorkplaceUrl,
 } from "./utils/pixelogic.js";
+import {
+  getNetflixRequestRefFromUrl,
+  isNetflixAuthoringUrl,
+} from "./utils/netflix.js";
 
 const LOG_PREFIX = "[Gig Timer]";
-const NETFLIX_AUTHORING_HOST = "authoring.netflixstudios.com";
 const storageCache = { count: 0, urls: {}, lastProjectId: "" };
 
 const sheetsData = {
@@ -187,6 +190,19 @@ async function addListeners() {
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg?.action) return;
 
+    if (
+      msg.action === "store-netflix-runtime" &&
+      msg.source === "workplace.js"
+    ) {
+      persistNetflixRuntime(msg, sender?.tab?.id)
+        .then(sendResponse)
+        .catch((error) => {
+          console.error("Failed to store Netflix runtime", error);
+          sendResponse({ stored: false });
+        });
+      return true;
+    }
+
     if (msg.action === "store-elapsed-time") {
       console.log(`${LOG_PREFIX} Store elapsed time requested`, {
         elapsedTime: msg.elapsedTime,
@@ -283,18 +299,6 @@ async function addListeners() {
   });
 }
 
-function isNetflixAuthoringUrl(url) {
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.hostname === NETFLIX_AUTHORING_HOST &&
-      parsed.pathname.startsWith("/editor")
-    );
-  } catch {
-    return false;
-  }
-}
-
 async function getProjects(id) {
   const result = await chrome.storage.local.get("projects");
   const projects = Array.isArray(result.projects) ? result.projects : [];
@@ -303,6 +307,56 @@ async function getProjects(id) {
 
   const currentProject = projects.find((p) => p.id === id);
   return currentProject || undefined;
+}
+
+async function persistNetflixRuntime(message, tabId) {
+  const runtime = Number(message.runtime);
+  if (!Number.isFinite(runtime) || runtime <= 0) {
+    return { stored: false };
+  }
+
+  const tab = tabId ? await chrome.tabs.get(tabId) : undefined;
+  const workplaceUrl = message.workplaceUrl ?? tab?.url;
+  const requestRef =
+    message.requestRef ?? getNetflixRequestRefFromUrl(workplaceUrl);
+  const projects = await getProjects();
+  let existingProject = projects.find(
+    (project) =>
+      (requestRef && project.request_ref === requestRef) ||
+      (workplaceUrl && project.workplace_url === workplaceUrl),
+  );
+  let currentProject;
+
+  if (!existingProject && tabId) {
+    currentProject = await getWorkplaceProject("store-netflix-runtime", tabId);
+    existingProject = currentProject
+      ? await getMatchingProject(currentProject)
+      : undefined;
+  }
+
+  const projectId =
+    getPreferredProjectId(currentProject, existingProject) ??
+    currentProject?.id ??
+    existingProject?.id;
+  if (!projectId) return { stored: false };
+
+  const project = mergeProjectData(existingProject ?? {}, {
+    ...(currentProject ?? {}),
+    id: projectId,
+    request_ref: requestRef,
+    runtime,
+    workplace_url: workplaceUrl,
+  });
+
+  await upsertProjects(project);
+  storageCache.lastProjectId = projectId;
+  await chrome.storage.local.set({ lastProjectId: projectId });
+  console.log(`${LOG_PREFIX} Netflix runtime stored`, {
+    projectId,
+    runtime,
+  });
+
+  return { projectId, runtime, stored: true };
 }
 
 async function getMatchingProject(project) {
@@ -433,7 +487,7 @@ async function getWorkplaceProject(calledBy, tabIdOverride) {
     if (tabIdOverride) {
       try {
         const tab = await chrome.tabs.get(tabIdOverride);
-        if (tab?.url && !tab.url.includes("authoring.netflixstudios.com")) {
+        if (tab?.url && !isNetflixAuthoringUrl(tab.url)) {
           return normalizeWorkplaceResponseData(tab.url, tab.url);
         }
       } catch (tabError) {
@@ -571,10 +625,27 @@ function isPixelogicFallbackProjectValue(value) {
   return /^Pixelogic (?:Project|Task) \d+$/i.test(String(value ?? "").trim());
 }
 
+function isNetflixAuthoringProject(project = {}) {
+  const workplaceUrl = project?.workplace_url;
+  return String(workplaceUrl ?? "").toLowerCase().includes("netflixstudios.com");
+}
+
 function mergeProjectData(existingProject, nextProject) {
   const merged = { ...existingProject };
+  const enforceNetflixDefaults = isNetflixAuthoringProject(nextProject);
+
   Object.keys(nextProject).forEach((key) => {
     if (key === "date_assigned") return;
+
+    if (
+      enforceNetflixDefaults &&
+      (key === "client" || key === "contractor" || key === "rate")
+    ) {
+      if (isDefinedProjectValue(nextProject[key])) {
+        merged[key] = nextProject[key];
+      }
+      return;
+    }
 
     if (
       key === "rate" &&

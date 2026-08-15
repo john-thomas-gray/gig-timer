@@ -7,8 +7,12 @@ const operationsManagerUrl =
   "https://phelix.pixelogicmedia.com/operations-manager/tasks/13500851";
 const netflixAuthoringUrl =
   "https://authoring.netflixstudios.com/editor?requestRef=dubtext%3Adubtext_script_authoring%3A28fbbe84-bb57-4cf8-b97c-f9e666d6e63d";
+const netflixOriginatorUrl =
+  "https://originatorstudio.netflixstudios.com/document/dubtext:dubtext_script_authoring:c1742900-25d4-4052-b4a1-342dbe1fc496";
 const netflixRequestRef =
   "dubtext:dubtext_script_authoring:28fbbe84-bb57-4cf8-b97c-f9e666d6e63d";
+const netflixOriginatorRequestRef =
+  "dubtext:dubtext_script_authoring:c1742900-25d4-4052-b4a1-342dbe1fc496";
 
 function createChromeMock({
   assignmentResponses,
@@ -31,7 +35,7 @@ function createChromeMock({
   const defaultAssignmentProjects = [
     {
       assignment_url: compositionUrl,
-      contractor: "Pixelogic Media",
+      contractor: "Pixelogic",
       episode: "5",
       project_id: "105667",
       rate: 6,
@@ -120,7 +124,7 @@ function createChromeMock({
           if (message.action === "request-workplace-id") {
             return {
               data: workplaceData ?? {
-                contractor: "Pixelogic Media",
+                contractor: "Pixelogic",
                 episode: "5",
                 rate: 6,
                 runtime: 2427,
@@ -156,7 +160,7 @@ function createChromeMock({
 
 const pixelogicFallbackProject = {
   assignment_url: compositionUrl,
-  contractor: "Pixelogic Media",
+  contractor: "Pixelogic",
   id: "Pixelogic Project 105667",
   project_id: "105667",
   rate: 6,
@@ -168,7 +172,7 @@ const pixelogicFallbackProject = {
 
 const richPixelogicProject = {
   assignment_url: compositionUrl,
-  contractor: "Pixelogic Media",
+  contractor: "Pixelogic",
   episode: "54",
   project_id: "105667",
   rate: 6,
@@ -265,7 +269,7 @@ test("export project stamps date completed and stores the completed field", asyn
         title: "Example Series",
         season: "1",
         episode: "1",
-        contractor: "Pixelogic Media",
+        contractor: "Pixelogic",
         date_assigned: "2026-01-02",
         runtime: 2400,
         rate: 6,
@@ -647,7 +651,7 @@ test("Pixelogic elapsed time merges into the existing fallback project", async (
     projects: [
       {
         assignment_url: compositionUrl,
-        contractor: "Pixelogic Media",
+        contractor: "Pixelogic",
         id: "Pixelogic Project 105667",
         project_id: "105667",
         rate: 6,
@@ -660,7 +664,7 @@ test("Pixelogic elapsed time merges into the existing fallback project", async (
     tabUrl: compositionUrl,
     workplaceData: {
       assignment_url: compositionUrl,
-      contractor: "Pixelogic Media",
+      contractor: "Pixelogic",
       episode: "54",
       project_id: "105667",
       rate: 6,
@@ -708,7 +712,7 @@ test("Pixelogic elapsed time collapses fallback and id-only duplicate projects",
     projects: [
       {
         assignment_url: compositionUrl,
-        contractor: "Pixelogic Media",
+        contractor: "Pixelogic",
         id: "Pixelogic Project 105667",
         project_id: "105667",
         rate: 6,
@@ -725,7 +729,7 @@ test("Pixelogic elapsed time collapses fallback and id-only duplicate projects",
     tabUrl: compositionUrl,
     workplaceData: {
       assignment_url: compositionUrl,
-      contractor: "Pixelogic Media",
+      contractor: "Pixelogic",
       episode: "54",
       project_id: "105667",
       rate: 6,
@@ -857,6 +861,69 @@ test("Netflix authoring navigation creates a VSI project and starts the timer", 
       assert.equal(
         mock.storage.lastProjectId,
         "Example Series: Season 1: Episode 2",
+      );
+      assertLogMessage(logs, "[Gig Timer] Netflix authoring page recognized");
+      assertLogMessage(logs, "[Gig Timer] Sending stopwatch init");
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("Originator Studio document navigation creates a VSI project and starts the timer", async () => {
+  const mock = createChromeMock({
+    tabUrl: netflixOriginatorUrl,
+    workplaceData: {
+      client: "Netflix",
+      contractor: "VSI",
+      id: netflixOriginatorRequestRef,
+      request_ref: netflixOriginatorRequestRef,
+      rate: 7,
+      runtime: 1800,
+      title: 'Monkey Wrench: Season 1: "Episode 1" - Originator Studio',
+      workplace_url: netflixOriginatorUrl,
+    },
+  });
+  const originalConsoleLog = console.log;
+  const logs = [];
+  globalThis.chrome = mock.chrome;
+  console.log = (...args) => {
+    logs.push(args);
+  };
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.historyStateUpdated.length, 1),
+    );
+
+    mock.listeners.historyStateUpdated[0]({
+      frameId: 0,
+      tabId: 11,
+      url: netflixOriginatorUrl,
+    });
+
+    await waitFor(() => {
+      assert.deepEqual(
+        mock.sentMessages.map((message) => message.action),
+        ["request-workplace-id", "init-stopwatch"],
+      );
+      assert.equal(mock.storage.projects.length, 1);
+      assert.equal(mock.storage.projects[0].client, "Netflix");
+      assert.equal(mock.storage.projects[0].contractor, "VSI");
+      assert.equal(mock.storage.projects[0].rate, 7);
+      assert.equal(
+        mock.storage.projects[0].request_ref,
+        netflixOriginatorRequestRef,
+      );
+      assert.equal(
+        mock.storage.projects[0].id,
+        "Monkey Wrench: Season 1: Episode 1",
+      );
+      assert.equal(
+        mock.storage.lastProjectId,
+        "Monkey Wrench: Season 1: Episode 1",
       );
       assertLogMessage(logs, "[Gig Timer] Netflix authoring page recognized");
       assertLogMessage(logs, "[Gig Timer] Sending stopwatch init");

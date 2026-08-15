@@ -26,6 +26,12 @@ document.addEventListener("DOMContentLoaded", () => {
 let existingProjects = [];
 let selectedProject = undefined;
 let defaultFields;
+let activeTabId;
+let activeProjectId;
+let latestStopwatchTime;
+let workTimeInput;
+let workTimeManuallyEdited = false;
+let stopwatchRefreshInterval;
 
 async function init() {
   defaultFields = document.getElementById("defaultFields");
@@ -37,7 +43,9 @@ async function init() {
     return;
   }
 
-  const initialProjectId = await getInitialProjectId();
+  activeTabId = await getActiveTabId();
+  const initialProjectId = await getInitialProjectId(activeTabId);
+  activeProjectId = initialProjectId;
   existingProjects = await getStoredProjects();
   await buildUI(existingProjects);
   selectProjectById(initialProjectId);
@@ -51,6 +59,9 @@ async function init() {
   updateButton.addEventListener("click", async () => {
     await updateProjectFromForm();
   });
+
+  await requestCurrentStopwatchTime();
+  stopwatchRefreshInterval = setInterval(requestCurrentStopwatchTime, 500);
 }
 
 async function getStoredProjects() {
@@ -65,8 +76,7 @@ async function getStoredProjects() {
   });
 }
 
-async function getInitialProjectId() {
-  const tabId = await getActiveTabId();
+async function getInitialProjectId(tabId) {
 
   return new Promise((resolve) => {
     chrome.runtime.sendMessage(
@@ -186,6 +196,18 @@ function buildFormInputs() {
     input.type = formSchema[key];
     input.name = key;
     input.value = "";
+    if (key === "runtime") input.placeholder = "hh:mm:ss:ff";
+    if (key === "work_time") {
+      input.placeholder = "hh:mm:ss:ff";
+      workTimeInput = input;
+      input.addEventListener("beforeinput", () => {
+        workTimeManuallyEdited = true;
+      });
+      input.addEventListener("input", () => {
+        workTimeManuallyEdited = true;
+      });
+      input.addEventListener("blur", handleWorkTimeBlur);
+    }
 
     wrapper.appendChild(label);
     wrapper.appendChild(input);
@@ -198,6 +220,8 @@ function onSelectChange() {
   const select = document.getElementById("projectSelect");
   const projectId = select.value;
 
+  workTimeManuallyEdited = false;
+
   selectedProject =
     existingProjects.find((project) => project.id === projectId) ?? undefined;
   const h2 = document.getElementById("h2");
@@ -205,6 +229,48 @@ function onSelectChange() {
   console.log(selectedProject);
 
   setFormText();
+}
+
+function handleWorkTimeBlur() {
+  if (!workTimeInput) return;
+
+  if (!workTimeInput.value.trim()) {
+    workTimeManuallyEdited = false;
+  }
+
+  refreshLiveWorkTimeInput();
+}
+
+function refreshLiveWorkTimeInput() {
+  if (
+    !workTimeInput ||
+    workTimeManuallyEdited ||
+    document.activeElement === workTimeInput ||
+    selectedProject?.id !== activeProjectId ||
+    !Number.isFinite(latestStopwatchTime)
+  ) {
+    return;
+  }
+
+  workTimeInput.value = formatElapsedTime(latestStopwatchTime);
+}
+
+async function requestCurrentStopwatchTime() {
+  if (!activeTabId || selectedProject?.id !== activeProjectId) return;
+
+  chrome.tabs.sendMessage(
+    activeTabId,
+    { action: "get-stopwatch-time", source: "popup.js" },
+    (response) => {
+      if (chrome.runtime.lastError) return;
+
+      const elapsedTime = Number(response?.elapsedTime);
+      if (!Number.isFinite(elapsedTime)) return;
+
+      latestStopwatchTime = elapsedTime;
+      refreshLiveWorkTimeInput();
+    },
+  );
 }
 
 //should import from format
@@ -237,24 +303,58 @@ function formatRate(value) {
   return "$" + num.toFixed(2) + "/min";
 }
 
-function formatTime(value) {
+function formatElapsedTime(value) {
   const totalSeconds = Number(value);
-  if (isNaN(totalSeconds)) return value;
+  if (!Number.isFinite(totalSeconds)) return value;
 
-  const days = Math.floor(totalSeconds / 86400)
+  const totalCentiseconds = Math.floor(Math.max(0, totalSeconds) * 100);
+  const hours = Math.floor(totalCentiseconds / 360000)
     .toString()
     .padStart(2, "0");
-  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalCentiseconds % 360000) / 6000)
     .toString()
     .padStart(2, "0");
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = Math.floor((totalCentiseconds % 6000) / 100)
     .toString()
     .padStart(2, "0");
-  const seconds = Math.floor(totalSeconds % 60)
-    .toString()
-    .padStart(2, "0");
+  const ff = (totalCentiseconds % 100).toString().padStart(2, "0");
 
-  return `${days}:${hours}:${minutes}:${seconds}`;
+  return `${hours}:${minutes}:${seconds}:${ff}`;
+}
+
+function formatRuntimeTimecode(value, frameRate) {
+  const totalSeconds = Number(value);
+  if (!Number.isFinite(totalSeconds)) return value;
+
+  const absoluteSeconds = Math.abs(totalSeconds);
+  const numericFrameRate = Number(frameRate);
+  const fallbackFrameRate = 24;
+  const resolvedFrameRate =
+    Number.isFinite(numericFrameRate) && numericFrameRate > 0
+      ? numericFrameRate
+      : fallbackFrameRate;
+  const frameBase = Math.max(Math.round(resolvedFrameRate), 1);
+
+  let wholeSeconds = Math.floor(absoluteSeconds);
+  let frames = Math.round((absoluteSeconds - wholeSeconds) * resolvedFrameRate);
+
+  if (frames >= frameBase) {
+    wholeSeconds += 1;
+    frames = 0;
+  }
+
+  const hours = Math.floor(wholeSeconds / 3600)
+    .toString()
+    .padStart(2, "0");
+  const minutes = Math.floor((wholeSeconds % 3600) / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = Math.floor(wholeSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+  const sign = totalSeconds < 0 ? "-" : "";
+
+  return `${sign}${hours}:${minutes}:${seconds}:${String(frames).padStart(2, "0")}`;
 }
 
 function setFormText() {
@@ -267,7 +367,7 @@ function setFormText() {
     }
     return;
   }
-  
+
   for (const inputGroup of defaultFields.children) {
     const input = inputGroup.querySelector("input");
     if (!input) continue;
@@ -282,14 +382,18 @@ function setFormText() {
         ? selectedProject.date_completed ?? selectedProject.date_assigned
         : selectedProject[key];
 
-    if (key === "runtime") value = formatTime(value);
+    if (key === "runtime") {
+      value = formatRuntimeTimecode(value, selectedProject?.frame_rate);
+    }
     if (key === "rate") value = formatRate(value);
     if (key === "hourly_rate") value = formatHourlyRate(value);
     if (key === "invoice_amount") value = formatCurrency(value);
-    if (key === "work_time") value = formatTime(value);
+    if (key === "work_time") value = formatElapsedTime(value);
     console.log(value);
     input.value = value ?? "";
   }
+
+  refreshLiveWorkTimeInput();
 }
 
 function collectFormValues() {
@@ -305,7 +409,7 @@ function collectFormValues() {
   return values;
 }
 
-async function normalizeFormValues(rawValues) {
+async function normalizeFormValues(rawValues, shouldUpdateWorkTime) {
   const module = await loadNormalizationModule();
   const parsedTitle = module.parseTitleAndEpisode(rawValues.title);
   const parsedEpisode = module.parseSeasonEpisodeInput(rawValues.episode);
@@ -317,6 +421,10 @@ async function normalizeFormValues(rawValues) {
     module.normalizeEpisodeInput(rawValues.episode) ?? parsedTitle.episode,
     season,
   );
+  const parsedWorkTime = module.normalizeDurationInput(rawValues.work_time);
+  const effectiveWorkTime = shouldUpdateWorkTime
+    ? parsedWorkTime
+    : selectedProject?.work_time;
   const normalized = {
     title: parsedTitle.title ?? rawValues.title?.trim() ?? undefined,
     contractor: rawValues.contractor?.trim() || undefined,
@@ -326,10 +434,16 @@ async function normalizeFormValues(rawValues) {
     episode,
     date_completed: module.normalizeDateInput(rawValues.date_completed),
     date_due: module.normalizeDateInput(rawValues.date_due),
-    runtime: module.normalizeDurationInput(rawValues.runtime),
-    work_time: module.normalizeDurationInput(rawValues.work_time),
+    runtime: module.normalizeDurationInput(
+      rawValues.runtime,
+      selectedProject?.frame_rate ?? 24,
+    ),
     rate: module.normalizeRatePerMinuteInput(rawValues.rate),
   };
+
+  if (shouldUpdateWorkTime) {
+    normalized.work_time = parsedWorkTime;
+  }
 
   const manualInvoiceAmount = module.normalizeMoneyInput(rawValues.invoice_amount);
   const manualHourlyRate = module.normalizeHourlyRateInput(rawValues.hourly_rate);
@@ -341,7 +455,7 @@ async function normalizeFormValues(rawValues) {
 
   normalized.invoice_amount = invoiceAmount;
   normalized.hourly_rate =
-    module.calculateHourlyRate(invoiceAmount, normalized.work_time) ??
+    module.calculateHourlyRate(invoiceAmount, effectiveWorkTime) ??
     manualHourlyRate;
 
   return normalized;
@@ -349,14 +463,22 @@ async function normalizeFormValues(rawValues) {
 
 async function updateProjectFromForm() {
   try {
+    const shouldUpdateWorkTime = workTimeManuallyEdited;
     const rawValues = collectFormValues();
-    const normalizedValues = await normalizeFormValues(rawValues);
+    const normalizedValues = await normalizeFormValues(
+      rawValues,
+      shouldUpdateWorkTime,
+    );
     const module = await loadNormalizationModule();
 
     const projectToSave = {
       ...(selectedProject ?? {}),
       ...normalizedValues,
     };
+
+    if (!shouldUpdateWorkTime) {
+      delete projectToSave.work_time;
+    }
 
     const previousProjectId = selectedProject?.id;
     projectToSave.id = module.buildProjectId(projectToSave) ?? previousProjectId;
@@ -374,18 +496,52 @@ async function updateProjectFromForm() {
       [previousProjectId, projectToSave.id].includes(project.id),
     );
 
+    let savedProject = projectToSave;
     if (existingIndex >= 0) {
-      projects[existingIndex] = { ...projects[existingIndex], ...projectToSave };
+      savedProject = { ...projects[existingIndex], ...projectToSave };
+      projects[existingIndex] = savedProject;
     } else {
-      projects.push(projectToSave);
+      projects.push(savedProject);
     }
 
     await chrome.storage.local.set({ projects });
     existingProjects = projects;
-    selectedProject = projectToSave;
+    if (activeProjectId === previousProjectId) {
+      activeProjectId = projectToSave.id;
+    }
+    selectedProject = savedProject;
     setFormText();
+    if (shouldUpdateWorkTime) {
+      await syncStopwatchFromPopup();
+    }
   } catch (error) {
     console.error("Failed to update project from popup form:", error);
+  }
+}
+
+async function syncStopwatchFromPopup() {
+  if (!selectedProject?.id || !Number.isFinite(selectedProject.work_time)) return;
+
+  try {
+    const activeTabId = await getActiveTabId();
+    if (!activeTabId) return;
+
+    chrome.tabs.sendMessage(
+      activeTabId,
+      {
+        action: "set-stopwatch-time",
+        elapsedTime: selectedProject.work_time,
+        projectId: selectedProject.id,
+        source: "popup.js",
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          // Stopwatch script may not be active on this tab yet.
+        }
+      },
+    );
+  } catch (error) {
+    console.error("Failed to sync popup work time to stopwatch:", error);
   }
 }
 

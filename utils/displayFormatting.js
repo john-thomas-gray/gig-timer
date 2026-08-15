@@ -32,14 +32,20 @@ function formatDisplayOptions(key, value) {
 }
 
 function formatDisplayTime(seconds) {
-  const hrs = Math.floor(seconds / 3600)
+  const numericSeconds = Number(seconds);
+  if (!Number.isFinite(numericSeconds)) return "";
+  const totalCentiseconds = Math.max(0, Math.floor(numericSeconds * 100));
+  const hrs = Math.floor(totalCentiseconds / 360000)
     .toString()
     .padStart(2, "0");
-  const mins = Math.floor((seconds % 3600) / 60)
+  const mins = Math.floor((totalCentiseconds % 360000) / 6000)
     .toString()
     .padStart(2, "0");
-  const secs = (seconds % 60).toString().padStart(2, "0");
-  return `${hrs}:${mins}:${secs}`;
+  const secs = Math.floor((totalCentiseconds % 6000) / 100)
+    .toString()
+    .padStart(2, "0");
+  const ff = (totalCentiseconds % 100).toString().padStart(2, "0");
+  return `${hrs}:${mins}:${secs}:${ff}`;
 }
 
 function formatDisplayUSD(dollars) {

@@ -1,7 +1,7 @@
 export const projectTemplate = {
   id: undefined,
   client: undefined,
-  contractor: "Pixelogic Media",
+  contractor: "Pixelogic",
   date_completed: undefined,
   date_due: undefined,
   season: undefined,
