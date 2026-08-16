@@ -4,17 +4,6 @@ import test from "node:test";
 const compositionUrl =
   "https://phelix.pixelogicmedia.com/composition-editor/projects/105667?taskId=13500851&grid1=spottingCreation";
 
-function createDocumentMock() {
-  const body = createElementMock("body");
-  body.innerText = "";
-
-  return {
-    body,
-    addEventListener() {},
-    createElement: createElementMock,
-  };
-}
-
 function createElementMock(tagName) {
   return {
     children: [],
@@ -22,17 +11,25 @@ function createElementMock(tagName) {
     style: {},
     tagName: tagName.toUpperCase(),
     textContent: "",
+    addEventListener() {},
     appendChild(child) {
       this.children.push(child);
       return child;
     },
-    addEventListener() {},
   };
 }
 
-function createChromeMock({ failuresBeforeSuccess = 0, storedWorktime = 42 } = {}) {
+function createDocumentMock() {
+  return {
+    body: createElementMock("body"),
+    addEventListener() {},
+    createElement: createElementMock,
+  };
+}
+
+function createChromeMock({ delayStorageGet } = {}) {
   const runtimeMessages = [];
-  let sendMessageCount = 0;
+  const sentMessages = [];
 
   return {
     chrome: {
@@ -46,28 +43,20 @@ function createChromeMock({ failuresBeforeSuccess = 0, storedWorktime = 42 } = {
           },
         },
         async sendMessage(message) {
-          if (message.action !== "get-stored-worktime") return undefined;
-
-          sendMessageCount += 1;
-          if (sendMessageCount <= failuresBeforeSuccess) {
-            throw new Error("Background listener is not ready");
-          }
-
-          return storedWorktime;
+          sentMessages.push(message);
         },
       },
       storage: {
         local: {
           async get() {
+            if (delayStorageGet) await delayStorageGet;
             return { urls: {} };
           },
         },
       },
     },
-    getSendMessageCount() {
-      return sendMessageCount;
-    },
     runtimeMessages,
+    sentMessages,
   };
 }
 
@@ -77,7 +66,7 @@ async function importFreshStopwatch() {
   await import(stopwatchUrl.href);
 }
 
-async function waitFor(assertion, timeoutMs = 2000) {
+async function waitFor(assertion, timeoutMs = 1000) {
   const startedAt = Date.now();
   let lastError;
 
@@ -94,19 +83,44 @@ async function waitFor(assertion, timeoutMs = 2000) {
   throw lastError;
 }
 
-test("stored work time load retries a transient startup failure without logging an error", async () => {
-  const mock = createChromeMock({ failuresBeforeSuccess: 1, storedWorktime: 120 });
-  const originalConsoleError = console.error;
-  const originalConsoleLog = console.log;
-  const originalSetInterval = globalThis.setInterval;
-  const originalClearInterval = globalThis.clearInterval;
-  const errors = [];
-
+function installStopwatchGlobals(mock) {
   globalThis.chrome = mock.chrome;
   globalThis.document = createDocumentMock();
   globalThis.window = { location: { href: compositionUrl } };
   globalThis.setInterval = () => 1;
   globalThis.clearInterval = () => {};
+}
+
+function restoreStopwatchGlobals(originals) {
+  console.error = originals.consoleError;
+  console.log = originals.consoleLog;
+  globalThis.setInterval = originals.setInterval;
+  globalThis.clearInterval = originals.clearInterval;
+  delete globalThis.__gigTimerStopwatchScriptLoaded;
+  delete globalThis.chrome;
+  delete globalThis.document;
+  delete globalThis.window;
+}
+
+function captureOriginals() {
+  return {
+    clearInterval: globalThis.clearInterval,
+    consoleError: console.error,
+    consoleLog: console.log,
+    setInterval: globalThis.setInterval,
+  };
+}
+
+test("stopwatch starts from supplied time without requesting it again", async () => {
+  let releaseStorage;
+  const delayStorageGet = new Promise((resolve) => {
+    releaseStorage = resolve;
+  });
+  const mock = createChromeMock({ delayStorageGet });
+  const originals = captureOriginals();
+  const errors = [];
+  let initResponse;
+  installStopwatchGlobals(mock);
   console.error = (...args) => {
     errors.push(args);
   };
@@ -114,67 +128,88 @@ test("stored work time load retries a transient startup failure without logging 
 
   try {
     await importFreshStopwatch();
-    await waitFor(() => assert.equal(mock.runtimeMessages.length, 1));
+    assert.equal(mock.runtimeMessages.length, 1);
 
     mock.runtimeMessages[0](
-      { action: "init-stopwatch", source: "background.js" },
+      {
+        action: "init-stopwatch",
+        projectId: "Example project",
+        source: "background.js",
+        storedWorktime: 120,
+      },
       {},
-      () => {},
+      (response) => {
+        initResponse = response;
+      },
     );
 
-    await waitFor(() => assert.equal(mock.getSendMessageCount(), 2));
-    assert.equal(errors.length, 0);
+    await Promise.resolve();
+    assert.equal(initResponse, undefined);
+    releaseStorage();
+
+    await waitFor(() => assert.deepEqual(initResponse, { initiated: true }));
+
+    let timeResponse;
+    mock.runtimeMessages[0](
+      { action: "get-stopwatch-time" },
+      {},
+      (response) => {
+        timeResponse = response;
+      },
+    );
+
+    await waitFor(() => assert.deepEqual(timeResponse, { elapsedTime: 120 }));
+    assert.deepEqual(mock.sentMessages, []);
+    assert.deepEqual(errors, []);
   } finally {
-    console.error = originalConsoleError;
-    console.log = originalConsoleLog;
-    globalThis.setInterval = originalSetInterval;
-    globalThis.clearInterval = originalClearInterval;
-    delete globalThis.chrome;
-    delete globalThis.document;
-    delete globalThis.window;
+    restoreStopwatchGlobals(originals);
   }
 });
 
-test("stored work time load logs an error only after every retry fails", async () => {
-  const mock = createChromeMock({ failuresBeforeSuccess: 99 });
-  const originalConsoleError = console.error;
-  const originalConsoleLog = console.log;
-  const originalSetInterval = globalThis.setInterval;
-  const originalClearInterval = globalThis.clearInterval;
-  const errors = [];
-
-  globalThis.chrome = mock.chrome;
-  globalThis.document = createDocumentMock();
-  globalThis.window = { location: { href: compositionUrl } };
-  globalThis.setInterval = () => 1;
-  globalThis.clearInterval = () => {};
-  console.error = (...args) => {
-    errors.push(args);
-  };
+test("stopwatch saves elapsed time against its supplied project id", async () => {
+  const mock = createChromeMock();
+  const originals = captureOriginals();
+  installStopwatchGlobals(mock);
+  console.error = () => {};
   console.log = () => {};
 
   try {
     await importFreshStopwatch();
     await waitFor(() => assert.equal(mock.runtimeMessages.length, 1));
 
+    let initResponse;
     mock.runtimeMessages[0](
-      { action: "init-stopwatch", source: "background.js" },
+      {
+        action: "init-stopwatch",
+        projectId: "Example project",
+        source: "background.js",
+        storedWorktime: 90,
+      },
+      {},
+      (response) => {
+        initResponse = response;
+      },
+    );
+    await waitFor(() => assert.deepEqual(initResponse, { initiated: true }));
+
+    mock.runtimeMessages[0](
+      {
+        action: "set-stopwatch-time",
+        elapsedTime: 135,
+        projectId: "Example project",
+      },
       {},
       () => {},
     );
 
-    await waitFor(() => {
-      assert.equal(mock.getSendMessageCount(), 5);
-      assert.equal(errors.length, 1);
+    await waitFor(() => assert.equal(mock.sentMessages.length, 1));
+    assert.deepEqual(mock.sentMessages[0], {
+      action: "store-elapsed-time",
+      elapsedTime: 135,
+      projectId: "Example project",
+      url: compositionUrl,
     });
-    assert.equal(errors[0][0], "Unable to get stored workTime");
   } finally {
-    console.error = originalConsoleError;
-    console.log = originalConsoleLog;
-    globalThis.setInterval = originalSetInterval;
-    globalThis.clearInterval = originalClearInterval;
-    delete globalThis.chrome;
-    delete globalThis.document;
-    delete globalThis.window;
+    restoreStopwatchGlobals(originals);
   }
 });

@@ -40,6 +40,9 @@ const COMPOSITION_METADATA_RETRY_ATTEMPTS = 6;
 const COMPOSITION_METADATA_RETRY_DELAY_MS = 500;
 
 let hasAddedListeners = false;
+const storageCacheReady = initStorageCache().catch((error) => {
+  console.error(`${LOG_PREFIX} Failed to initialize storage cache:`, error);
+});
 
 init();
 
@@ -52,12 +55,11 @@ async function initStorageCache() {
   Object.assign(storageCache, items);
 }
 
-async function init() {
-  await initStorageCache();
-  await addListeners();
+function init() {
+  addListeners();
 }
 
-async function addListeners() {
+function addListeners() {
   if (hasAddedListeners) return;
   hasAddedListeners = true;
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -81,6 +83,7 @@ async function addListeners() {
     const timer = setTimeout(async () => {
       navigationTimers.delete(tabId);
 
+      await storageCacheReady;
       const assignments = storageCache.urls?.assignments?.trim();
       const workplace = storageCache.urls?.workplace?.trim();
       const isAssignmentPage = isAssignmentsUrl(url, assignments);
@@ -120,7 +123,7 @@ async function addListeners() {
               `${LOG_PREFIX} Composition project stored; starting stopwatch`,
               { projectId, tabId },
             );
-            await initStopwatch(tabId);
+            await initStopwatch(tabId, projectId);
           } else {
             console.warn(
               `${LOG_PREFIX} Composition project recognized but no project metadata was found`,
@@ -140,7 +143,7 @@ async function addListeners() {
           storageCache.lastProjectId = project.id;
           await chrome.storage.local.set({ lastProjectId: project.id });
           await upsertProjects(project);
-          await initStopwatch(tabId);
+          await initStopwatch(tabId, project.id);
         } else {
           console.warn(
             `${LOG_PREFIX} Netflix authoring page had no project metadata`,
@@ -163,7 +166,7 @@ async function addListeners() {
               `${LOG_PREFIX} Workplace project stored; starting stopwatch`,
               { projectId: project.id, tabId },
             );
-            await initStopwatch(tabId);
+            await initStopwatch(tabId, project.id);
           } else {
             console.log(
               `${LOG_PREFIX} Workplace project stored without starting stopwatch`,
@@ -194,7 +197,7 @@ async function addListeners() {
       msg.action === "store-netflix-runtime" &&
       msg.source === "workplace.js"
     ) {
-      persistNetflixRuntime(msg, sender?.tab?.id)
+      withStorageCacheReady(() => persistNetflixRuntime(msg, sender?.tab?.id))
         .then(sendResponse)
         .catch((error) => {
           console.error("Failed to store Netflix runtime", error);
@@ -206,19 +209,29 @@ async function addListeners() {
     if (msg.action === "store-elapsed-time") {
       console.log(`${LOG_PREFIX} Store elapsed time requested`, {
         elapsedTime: msg.elapsedTime,
+        projectId: msg.projectId,
         tabId: sender?.tab?.id,
       });
       (async () => {
         try {
+          await storageCacheReady;
           const workTimeValue = msg.elapsedTime ?? 0;
-          const currentProject = await getWorkplaceProject(
-            "store-elapsed-time",
-            sender?.tab?.id,
-          );
-          const existingProject = currentProject
-            ? await getMatchingProject(currentProject)
+          const requestedProject = msg.projectId
+            ? await getProjects(msg.projectId)
             : undefined;
+          const currentProject =
+            requestedProject ??
+            (await getWorkplaceProject(
+              "store-elapsed-time",
+              sender?.tab?.id,
+            ));
+          const existingProject =
+            requestedProject ??
+            (currentProject
+              ? await getMatchingProject(currentProject)
+              : undefined);
           const workplaceId =
+            requestedProject?.id ??
             getPreferredProjectId(currentProject, existingProject) ??
             storageCache.lastProjectId;
           const project = currentProject
@@ -252,15 +265,26 @@ async function addListeners() {
 
     if (msg.action === "get-stored-worktime") {
       console.log(`${LOG_PREFIX} Stored work time requested`, {
+        projectId: msg.projectId,
         tabId: sender?.tab?.id,
       });
-      getStoredProjectValue("work_time", sender?.tab?.id).then((workTime) => {
-        console.log(`${LOG_PREFIX} Stored work time response`, {
-          tabId: sender?.tab?.id,
-          workTime,
+      withStorageCacheReady(() =>
+        msg.projectId
+          ? getProjects(msg.projectId).then((project) => project?.work_time)
+          : getStoredProjectValue("work_time", sender?.tab?.id),
+      )
+        .then((workTime) => {
+          console.log(`${LOG_PREFIX} Stored work time response`, {
+            projectId: msg.projectId,
+            tabId: sender?.tab?.id,
+            workTime,
+          });
+          sendResponse(workTime);
+        })
+        .catch((error) => {
+          console.error(`${LOG_PREFIX} Failed to load stored work time`, error);
+          sendResponse(undefined);
         });
-        sendResponse(workTime);
-      });
       return true;
     }
 
@@ -275,7 +299,9 @@ async function addListeners() {
       msg.action === "get-latest-workspace-project-id" &&
       msg.source === "popup.js"
     ) {
-      getLatestWorkspaceProjectId(msg.tabId).then((projectId) => {
+      withStorageCacheReady(() =>
+        getLatestWorkspaceProjectId(msg.tabId),
+      ).then((projectId) => {
         sendResponse({ projectId });
       });
       return true;
@@ -297,6 +323,11 @@ async function addListeners() {
       })();
     }
   });
+}
+
+async function withStorageCacheReady(callback) {
+  await storageCacheReady;
+  return callback();
 }
 
 async function getProjects(id) {
@@ -783,15 +814,32 @@ function matchesProject(existingProject, nextProject) {
   return false;
 }
 
-async function initStopwatch(tabId) {
+async function initStopwatch(tabId, projectId) {
   try {
-    if (!tabId) return;
-    console.log(`${LOG_PREFIX} Sending stopwatch init`, { tabId });
+    if (!tabId || !projectId) return;
+
+    const project = await getProjects(projectId);
+    if (!project) {
+      throw new Error(`Project not found while starting stopwatch: ${projectId}`);
+    }
+
+    const numericStoredWorktime = Number(project.work_time);
+    const storedWorktime =
+      Number.isFinite(numericStoredWorktime) && numericStoredWorktime >= 0
+        ? numericStoredWorktime
+        : 0;
+    console.log(`${LOG_PREFIX} Sending stopwatch init`, {
+      projectId,
+      storedWorktime,
+      tabId,
+    });
     await sendTabMessage(
       tabId,
       {
         action: "init-stopwatch",
+        projectId,
         source: "background.js",
+        storedWorktime,
       },
       { injectFiles: STOPWATCH_CONTENT_FILES },
     );

@@ -1,4 +1,7 @@
 (() => {
+if (globalThis.__gigTimerStopwatchScriptLoaded) return;
+globalThis.__gigTimerStopwatchScriptLoaded = true;
+
 /* Initialize self. Request existing workTime, await response. Start stopwatch. */
 let initiated = false;
 let stopwatchElement = undefined;
@@ -15,13 +18,12 @@ let lastAutoSaveSecond = -1;
 let idleSeconds = 0;
 let isIdle = false;
 let isManualPause = false;
+let activeProjectId;
 let pixelogicModulePromise;
 let netflixModulePromise;
 
 const LOG_PREFIX = "[Gig Timer]";
 const IDLE_THRESHOLD_SECONDS = 3 * 60;
-const STORED_WORKTIME_LOAD_ATTEMPTS = 5;
-const STORED_WORKTIME_LOAD_RETRY_DELAY_MS = 200;
 let lastActionAt = Date.now();
 
 const formatTimestamp = (ms) => new Date(ms).toLocaleTimeString();
@@ -36,51 +38,89 @@ function loadNetflixModule() {
   return netflixModulePromise;
 }
 
-async function initStopwatchScript() {
+const stopwatchContextReady = loadStopwatchContext();
+chrome.runtime.onMessage.addListener(stopwatchListener);
+stopwatchContextReady
+  .then(({ isTimerPage }) => {
+    if (!isTimerPage) return;
+
+    console.log(`${LOG_PREFIX} Stopwatch content script active`, {
+      url: window.location.href,
+    });
+
+    document.addEventListener("pointermove", monitorUserActions);
+    document.addEventListener("keydown", monitorUserActions);
+  })
+  .catch((error) => {
+    console.error(`${LOG_PREFIX} Stopwatch content script setup failed`, error);
+  });
+
+async function loadStopwatchContext() {
   const [pixelogic, netflix] = await Promise.all([
     loadPixelogicModule(),
     loadNetflixModule(),
   ]);
   const { urls = {} } = await chrome.storage.local.get("urls");
   const workplace = urls.workplace?.trim();
-  if (
-    !pixelogic.isTimerPageUrl(window.location.href, { workplace }) &&
-    !netflix.isNetflixAuthoringUrl(window.location.href)
-  ) {
+  const isTimerPage =
+    pixelogic.isTimerPageUrl(window.location.href, { workplace }) ||
+    netflix.isNetflixAuthoringUrl(window.location.href);
+
+  return { isTimerPage };
+}
+
+function stopwatchListener(msg, sender, sendResponse) {
+  if (msg.source === "background.js" && msg.action === "init-stopwatch") {
+    (async () => {
+      const { isTimerPage } = await stopwatchContextReady;
+      if (!isTimerPage) {
+        sendResponse({ initiated: false });
+        return;
+      }
+      console.log(`${LOG_PREFIX} Stopwatch init message received`, {
+        projectId: msg.projectId,
+        url: window.location.href,
+      });
+      activeProjectId = msg.projectId;
+      await initStopwatch(msg.storedWorktime);
+      sendResponse({ initiated: true });
+    })().catch((error) => {
+      console.error(`${LOG_PREFIX} Stopwatch init failed`, error);
+      sendResponse({ initiated: false });
+    });
+    return true;
+  }
+
+  if (msg.action === "set-stopwatch-time") {
+    (async () => {
+      const { isTimerPage } = await stopwatchContextReady;
+      if (!isTimerPage) return;
+      activeProjectId = msg.projectId ?? activeProjectId;
+      syncStopwatchTime(msg.elapsedTime);
+    })().catch((error) => {
+      console.error(`${LOG_PREFIX} Stopwatch time sync failed`, error);
+    });
     return;
   }
 
-  console.log(`${LOG_PREFIX} Stopwatch content script active`, {
-    url: window.location.href,
-  });
-
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.source === "background.js" && msg.action === "init-stopwatch") {
-      console.log(`${LOG_PREFIX} Stopwatch init message received`, {
-        url: window.location.href,
-      });
-      initStopwatch();
-      return;
-    }
-
-    if (msg.action === "set-stopwatch-time") {
-      syncStopwatchTime(msg.elapsedTime);
-      return;
-    }
-
-    if (msg.action === "get-stopwatch-time") {
+  if (msg.action === "get-stopwatch-time") {
+    (async () => {
+      const { isTimerPage } = await stopwatchContextReady;
+      if (!isTimerPage) {
+        sendResponse(undefined);
+        return;
+      }
       sendResponse({ elapsedTime });
-    }
-  });
-
-  document.addEventListener("pointermove", monitorUserActions);
-  document.addEventListener("keydown", monitorUserActions);
+    })().catch((error) => {
+      console.error(`${LOG_PREFIX} Stopwatch time lookup failed`, error);
+      sendResponse(undefined);
+    });
+    return true;
+  }
 }
 
-initStopwatchScript();
-
-async function initStopwatch() {
-  await start();
+async function initStopwatch(storedWorktime) {
+  await start(storedWorktime);
   initiated = true;
   console.log(`${LOG_PREFIX} Stopwatch initiated`, {
     at: formatTimestamp(Date.now()),
@@ -222,7 +262,7 @@ function updatePausedOverlay() {
   stopwatchToggleButton.style.display = "inline-flex";
 }
 
-async function start() {
+async function start(initialStoredWorktime) {
   const THROTTLE_MS = 1000;
   const now = Date.now();
   if (isManualPause) {
@@ -243,18 +283,13 @@ async function start() {
     url: window.location.href,
   });
 
-  const storedWorktimeResult = await loadStoredWorktime();
-  let storedWorktime = elapsedTime;
-  if (storedWorktimeResult.loaded) {
-    storedWorktime = storedWorktimeResult.value;
-    console.log(`${LOG_PREFIX} Stored work time loaded`, {
-      formatted: formatTime(Number(storedWorktime) || 0),
-      seconds: storedWorktime,
-    });
-  }
-
-  const numericStoredWorktime = Number(storedWorktime);
+  const numericStoredWorktime = Number(initialStoredWorktime);
   if (Number.isFinite(numericStoredWorktime) && numericStoredWorktime >= 0) {
+    console.log(`${LOG_PREFIX} Stored work time loaded`, {
+      formatted: formatTime(numericStoredWorktime),
+      projectId: activeProjectId,
+      seconds: numericStoredWorktime,
+    });
     elapsedTime = Math.max(elapsedTime, numericStoredWorktime);
   } else if (!Number.isFinite(elapsedTime) || elapsedTime < 0) {
     elapsedTime = 0;
@@ -279,32 +314,6 @@ async function start() {
     autoSave();
     updateDisplay(elapsedTime);
   }, 1000);
-}
-
-async function loadStoredWorktime() {
-  let lastError;
-
-  for (let attempt = 1; attempt <= STORED_WORKTIME_LOAD_ATTEMPTS; attempt += 1) {
-    try {
-      const value = await chrome.runtime.sendMessage({
-        action: "get-stored-worktime",
-        url: window.location.href,
-      });
-      return { loaded: true, value };
-    } catch (e) {
-      lastError = e;
-      if (attempt < STORED_WORKTIME_LOAD_ATTEMPTS) {
-        await sleep(STORED_WORKTIME_LOAD_RETRY_DELAY_MS);
-      }
-    }
-  }
-
-  console.error("Unable to get stored workTime", lastError);
-  return { loaded: false };
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function autoSave() {
@@ -341,6 +350,7 @@ function storeElapsedTime(nextElapsedTime) {
   chrome.runtime.sendMessage({
     action: "store-elapsed-time",
     elapsedTime: nextElapsedTime,
+    projectId: activeProjectId,
     url: window.location.href,
   });
 }

@@ -1,4 +1,7 @@
 (() => {
+if (globalThis.__gigTimerWorkplaceScriptLoaded) return;
+globalThis.__gigTimerWorkplaceScriptLoaded = true;
+
 const CONTINUE_PAGE_TEXT =
   "We detected that you recently had an open session for this assignment.";
 let pixelogicModulePromise;
@@ -30,7 +33,24 @@ const NETFLIX_RUNTIME_STORAGE_WAIT_TIMEOUT_MS = 120000;
 const NETFLIX_RUNTIME_STORAGE_RETRY_ATTEMPTS = 5;
 const NETFLIX_RUNTIME_STORAGE_RETRY_DELAY_MS = 1000;
 
-const workplaceListener = (msg, sender, sendResponse) => {
+const workplaceContextReady = loadWorkplaceContext();
+chrome.runtime.onMessage.addListener(workplaceListener);
+workplaceContextReady
+  .then(({ isProjectMetadataPage, netflix }) => {
+    if (!isProjectMetadataPage) return;
+
+    console.log(`${LOG_PREFIX} Workplace content script active`, {
+      url: window.location.href,
+    });
+    if (netflix.isNetflixAuthoringUrl(window.location.href)) {
+      void syncNetflixRuntimeToStorage(netflix);
+    }
+  })
+  .catch((error) => {
+    console.error(`${LOG_PREFIX} Workplace content script setup failed`, error);
+  });
+
+function workplaceListener(msg, sender, sendResponse) {
   if (msg.source !== "background.js" || msg.action !== "request-workplace-id") {
     return;
   }
@@ -40,7 +60,13 @@ const workplaceListener = (msg, sender, sendResponse) => {
       console.log(`${LOG_PREFIX} Workplace metadata requested`, {
         url: window.location.href,
       });
-      const data = await getWorkplaceData();
+      const context = await workplaceContextReady;
+      if (!context.isProjectMetadataPage) {
+        sendResponse({ data: undefined });
+        return;
+      }
+
+      const data = await getWorkplaceData(context);
       console.log(`${LOG_PREFIX} Workplace metadata response ready`, {
         id: data?.id,
         taskId: data?.task_id,
@@ -54,14 +80,29 @@ const workplaceListener = (msg, sender, sendResponse) => {
   })();
 
   return true;
-};
+}
 
-async function getWorkplaceData() {
+async function loadWorkplaceContext() {
+  const [pixelogic, netflix] = await Promise.all([
+    loadPixelogicModule(),
+    loadNetflixModule(),
+  ]);
+  const { urls = {} } = await chrome.storage.local.get("urls");
+  const workplace = urls.workplace?.trim();
+  const isProjectMetadataPage =
+    pixelogic.isProjectMetadataPageUrl(window.location.href, { workplace }) ||
+    netflix.isNetflixAuthoringUrl(window.location.href);
+
+  return { isProjectMetadataPage, netflix, pixelogic };
+}
+
+async function getWorkplaceData(context) {
+  const { netflix, pixelogic } = context ?? (await loadWorkplaceContext());
+
   if (isContinuePage()) {
     console.log(`${LOG_PREFIX} Continue page detected`);
     return "__CONTINUE_PAGE__";
   }
-  const pixelogic = await loadPixelogicModule();
   const pixelogicProject = pixelogic.scrapePixelogicTimerDocument(
     document,
     window.location.href,
@@ -86,7 +127,6 @@ async function getWorkplaceData() {
     return pixelogicProject;
   }
 
-  const netflix = await loadNetflixModule();
   if (netflix.isNetflixAuthoringUrl(window.location.href)) {
     console.log(`${LOG_PREFIX} Netflix authoring page detected`);
     return getNetflixProjectData();
@@ -112,18 +152,24 @@ function getLegacyProjectData() {
 async function getNetflixProjectData() {
   const netflix = await loadNetflixModule();
   const requestRef = netflix.getNetflixRequestRefFromUrl(window.location.href);
-  const responses = requestRef ? await fetchNetflixMetadata(requestRef) : {};
+  const editorRequestRef = netflix.isNetflixEditorUrl(window.location.href)
+    ? requestRef
+    : undefined;
+  const responses = editorRequestRef
+    ? await fetchNetflixMetadata(editorRequestRef)
+    : {};
   const mediaRuntimeSeconds = await waitForNetflixMediaRuntime();
   const info = responses.info ?? responses.projectInfo ?? {};
   const projectInfo = responses.projectInfo ?? {};
   const documentPayload = responses.document?.document ?? responses.document ?? {};
   const documentMeta = documentPayload.meta ?? {};
   const mediaMetadata = responses.mediaMetadata ?? {};
-  const runtimeSource = await resolveNetflixRuntimeSource(
-    requestRef,
-    responses,
-    () => findVisibleRuntime(),
-  );
+  const runtimeSource =
+    mediaRuntimeSeconds === undefined
+      ? await resolveNetflixRuntimeSource(editorRequestRef, responses, () =>
+          findVisibleRuntime(),
+        )
+      : undefined;
   const titleSource = await waitForNetflixProgramTitle(() => {
     const candidates = [
       info.internalTitle,
@@ -242,10 +288,20 @@ async function fetchNetflixJson(path) {
   try {
     const response = await fetch(new URL(path, window.location.origin), {
       credentials: "include",
+      headers: { Accept: "application/json" },
     });
 
     if (!response.ok) return undefined;
-    return response.json();
+    const contentType = response.headers?.get?.("content-type") ?? "";
+    if (contentType && !contentType.toLowerCase().includes("json")) {
+      return undefined;
+    }
+
+    try {
+      return await response.json();
+    } catch {
+      return undefined;
+    }
   } catch (e) {
     console.warn(`Netflix metadata request failed for ${path}:`, e);
     return undefined;
@@ -947,27 +1003,4 @@ function findVisibleValue(labels, valuePattern) {
   return undefined;
 }
 
-async function initWorkplaceListener() {
-  const [pixelogic, netflix] = await Promise.all([
-    loadPixelogicModule(),
-    loadNetflixModule(),
-  ]);
-  const { urls = {} } = await chrome.storage.local.get("urls");
-  const workplace = urls.workplace?.trim();
-  if (
-    !pixelogic.isProjectMetadataPageUrl(window.location.href, { workplace }) &&
-    !netflix.isNetflixAuthoringUrl(window.location.href)
-  ) {
-    return;
-  }
-  console.log(`${LOG_PREFIX} Workplace content script active`, {
-    url: window.location.href,
-  });
-  chrome.runtime.onMessage.addListener(workplaceListener);
-  if (netflix.isNetflixAuthoringUrl(window.location.href)) {
-    void syncNetflixRuntimeToStorage(netflix);
-  }
-}
-
-initWorkplaceListener();
 })();

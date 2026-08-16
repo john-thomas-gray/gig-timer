@@ -1,4 +1,7 @@
 (() => {
+if (globalThis.__gigTimerAssignmentsScriptLoaded) return;
+globalThis.__gigTimerAssignmentsScriptLoaded = true;
+
 const pending = new Map();
 let pixelogicModulePromise;
 const LOG_PREFIX = "[Gig Timer]";
@@ -8,21 +11,42 @@ function loadPixelogicModule() {
   return pixelogicModulePromise;
 }
 
-async function initAssignmentsListener() {
+const assignmentsContextReady = loadAssignmentsContext();
+chrome.runtime.onMessage.addListener(assignmentsListener);
+window.addEventListener("message", handleBridgeMessage);
+assignmentsContextReady
+  .then(({ isAssignmentsPage }) => {
+    if (!isAssignmentsPage) return;
+
+    console.log(`${LOG_PREFIX} Assignments content script active`, {
+      url: window.location.href,
+    });
+  })
+  .catch((error) => {
+    console.error(`${LOG_PREFIX} Assignments content script setup failed`, error);
+  });
+
+async function loadAssignmentsContext() {
   const pixelogic = await loadPixelogicModule();
   const { urls = {} } = await chrome.storage.local.get("urls");
   const assignments = urls.assignments?.trim();
-  if (!pixelogic.isAssignmentsUrl(window.location.href, assignments)) {
-    return;
-  }
+  const isAssignmentsPage = pixelogic.isAssignmentsUrl(
+    window.location.href,
+    assignments,
+  );
 
-  console.log(`${LOG_PREFIX} Assignments content script active`, {
-    url: window.location.href,
-  });
+  return { isAssignmentsPage, pixelogic };
+}
 
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.action !== "request-assignments-data") return;
+function assignmentsListener(msg, sender, sendResponse) {
+  if (msg.action !== "request-assignments-data") return;
 
+  (async () => {
+    const { isAssignmentsPage, pixelogic } = await assignmentsContextReady;
+    if (!isAssignmentsPage) {
+      sendResponse(undefined);
+      return;
+    }
     console.log(`${LOG_PREFIX} Assignments data requested`, {
       url: window.location.href,
     });
@@ -51,7 +75,7 @@ async function initAssignmentsListener() {
           payload: { reason: error.message },
         });
       }
-      return true;
+      return;
     }
 
     const id = crypto.randomUUID();
@@ -63,33 +87,37 @@ async function initAssignmentsListener() {
       { source: "assignments.js", type: "REQUEST_W2UI_DATA", id },
       "*",
     );
-
-    return true;
-  });
-
-  window.addEventListener("message", (event) => {
-    if (event.data?.source !== "bridge.js") return;
-
-    const { id, type, payload } = event.data;
-    if (!id) {
-      console.warn("Bridge response missing id:", event.data);
-      return;
-    }
-
-    const sendResponse = pending.get(id);
-    if (!sendResponse) {
-      console.warn("No pending request for id:", id);
-      return;
-    }
-
-    sendResponse({ type, payload });
-    console.log(`${LOG_PREFIX} Legacy assignment bridge response received`, {
-      id,
-      type,
+  })().catch((error) => {
+    console.error(`${LOG_PREFIX} Assignment data request failed`, error);
+    sendResponse({
+      type: "PIXELLOGIC_ASSIGNMENTS_DATA_ERROR",
+      payload: { reason: error.message },
     });
-    pending.delete(id);
   });
+
+  return true;
 }
 
-initAssignmentsListener();
+function handleBridgeMessage(event) {
+  if (event.data?.source !== "bridge.js") return;
+
+  const { id, type, payload } = event.data;
+  if (!id) {
+    console.warn("Bridge response missing id:", event.data);
+    return;
+  }
+
+  const sendResponse = pending.get(id);
+  if (!sendResponse) {
+    console.warn("No pending request for id:", id);
+    return;
+  }
+
+  sendResponse({ type, payload });
+  console.log(`${LOG_PREFIX} Legacy assignment bridge response received`, {
+    id,
+    type,
+  });
+  pending.delete(id);
+}
 })();

@@ -13,6 +13,14 @@ export function isNetflixAuthoringUrl(url) {
   );
 }
 
+export function isNetflixEditorUrl(url) {
+  const parsed = parseUrl(url);
+  return (
+    parsed?.hostname === "authoring.netflixstudios.com" &&
+    parsed.pathname.startsWith("/editor")
+  );
+}
+
 export function getNetflixRequestRefFromUrl(url) {
   const parsed = parseUrl(url);
   if (!parsed) return undefined;

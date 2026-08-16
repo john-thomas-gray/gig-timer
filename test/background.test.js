@@ -16,6 +16,8 @@ const netflixOriginatorRequestRef =
 
 function createChromeMock({
   assignmentResponses,
+  delayInitialStorageGet,
+  failProjectReads = false,
   legacyAssignmentSnapshot,
   lastProjectId = "",
   projects = [],
@@ -32,6 +34,7 @@ function createChromeMock({
   const sentMessages = [];
   const storage = { lastProjectId, projects, urls };
   let assignmentRequestCount = 0;
+  let storageGetCount = 0;
   const defaultAssignmentProjects = [
     {
       assignment_url: compositionUrl,
@@ -80,6 +83,13 @@ function createChromeMock({
         },
         local: {
           async get(keys) {
+            storageGetCount += 1;
+            if (storageGetCount === 1 && delayInitialStorageGet) {
+              await delayInitialStorageGet;
+            }
+            if (storageGetCount > 1 && failProjectReads && keys === "projects") {
+              throw new Error("Project storage is unavailable");
+            }
             return getStorageValues(keys);
           },
           async set(items) {
@@ -206,6 +216,58 @@ async function waitFor(assertion, timeoutMs = 1000) {
   throw lastError;
 }
 
+test("background message listener is available before storage cache initialization finishes", async () => {
+  let releaseInitialStorage;
+  const delayInitialStorageGet = new Promise((resolve) => {
+    releaseInitialStorage = resolve;
+  });
+  const mock = createChromeMock({
+    delayInitialStorageGet,
+    projects: [
+      {
+        ...richPixelogicProject,
+        id: "Welcome to Wrexham: Season 5: Episode 54",
+        work_time: 90,
+      },
+    ],
+    tabUrl: compositionUrl,
+    workplaceData: richPixelogicProject,
+  });
+  const originalConsoleLog = console.log;
+  let responseCalled = false;
+  let storedWorkTime;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+
+    assert.equal(mock.listeners.runtimeMessages.length, 1);
+
+    mock.listeners.runtimeMessages[0](
+      { action: "get-stored-worktime" },
+      { tab: { id: 21 } },
+      (value) => {
+        responseCalled = true;
+        storedWorkTime = value;
+      },
+    );
+
+    await Promise.resolve();
+    assert.equal(responseCalled, false);
+
+    releaseInitialStorage();
+
+    await waitFor(() => {
+      assert.equal(responseCalled, true);
+      assert.equal(storedWorkTime, 90);
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
 test("history navigation to a composition-editor project creates the project and starts the timer", async () => {
   const mock = createChromeMock();
   const originalConsoleLog = console.log;
@@ -240,6 +302,14 @@ test("history navigation to a composition-editor project creates the project and
         mock.storage.lastProjectId,
         "Welcome to Wrexham: Season 5: Episode 5",
       );
+      const initMessage = mock.sentMessages.find(
+        (message) => message.action === "init-stopwatch",
+      );
+      assert.equal(
+        initMessage.projectId,
+        "Welcome to Wrexham: Season 5: Episode 5",
+      );
+      assert.equal(initMessage.storedWorktime, 0);
       assertLogMessage(logs, "[Gig Timer] Processing timer page navigation");
       assertLogMessage(logs, "[Gig Timer] Assignment page recognized");
       assertLogMessage(logs, "[Gig Timer] Requesting assignments data");
@@ -412,6 +482,41 @@ test("Pixelogic URL fallback metadata does not overwrite a rich project", async 
       assert.equal(mock.storage.projects[0].work_time, 120);
       assert.equal(mock.storage.projects[0].runtime, 2427);
     });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("elapsed time with a project id avoids another page metadata request", async () => {
+  const projectId = "Welcome to Wrexham: Season 5: Episode 54";
+  const mock = createChromeMock({
+    projects: [
+      {
+        ...richPixelogicProject,
+        id: projectId,
+        work_time: 90,
+      },
+    ],
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() => assert.equal(mock.listeners.runtimeMessages.length, 1));
+
+    mock.listeners.runtimeMessages[0](
+      { action: "store-elapsed-time", elapsedTime: 120, projectId },
+      { tab: { id: 14 } },
+      () => {},
+    );
+
+    await waitFor(() => {
+      assert.equal(mock.storage.projects[0].work_time, 120);
+    });
+    assert.deepEqual(mock.sentMessages, []);
   } finally {
     console.log = originalConsoleLog;
     delete globalThis.chrome;
@@ -811,6 +916,70 @@ test("stored work time lookup refreshes fallback Pixelogic metadata from the pag
   }
 });
 
+test("stored work time lookup by project id avoids page metadata", async () => {
+  const projectId = "Welcome to Wrexham: Season 5: Episode 54";
+  const mock = createChromeMock({
+    projects: [{ id: projectId, work_time: 90 }],
+  });
+  const originalConsoleLog = console.log;
+  let storedWorkTime;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() => assert.equal(mock.listeners.runtimeMessages.length, 1));
+
+    mock.listeners.runtimeMessages[0](
+      { action: "get-stored-worktime", projectId },
+      { tab: { id: 16 } },
+      (value) => {
+        storedWorkTime = value;
+      },
+    );
+
+    await waitFor(() => assert.equal(storedWorkTime, 90));
+    assert.deepEqual(mock.sentMessages, []);
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("stored work time lookup reports a real storage failure", async () => {
+  const mock = createChromeMock({ failProjectReads: true });
+  const originalConsoleError = console.error;
+  const originalConsoleLog = console.log;
+  const errors = [];
+  let responseCalled = false;
+  globalThis.chrome = mock.chrome;
+  console.error = (...args) => {
+    errors.push(args);
+  };
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() => assert.equal(mock.listeners.runtimeMessages.length, 1));
+
+    mock.listeners.runtimeMessages[0](
+      { action: "get-stored-worktime", projectId: "Example project" },
+      { tab: { id: 17 } },
+      () => {
+        responseCalled = true;
+      },
+    );
+
+    await waitFor(() => assert.equal(responseCalled, true));
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0][0], "[Gig Timer] Failed to load stored work time");
+  } finally {
+    console.error = originalConsoleError;
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
 test("Netflix authoring navigation creates a VSI project and starts the timer", async () => {
   const mock = createChromeMock({
     tabUrl: netflixAuthoringUrl,
@@ -978,6 +1147,11 @@ test("Netflix authoring navigation updates an existing project by request ref", 
       assert.equal(mock.storage.projects[0].title, "Example Series");
       assert.equal(mock.storage.projects[0].work_time, 120);
       assert.equal(mock.storage.projects[0].rate, 7);
+      const initMessage = mock.sentMessages.find(
+        (message) => message.action === "init-stopwatch",
+      );
+      assert.equal(initMessage.projectId, "Example Series: Season 1: Episode 2");
+      assert.equal(initMessage.storedWorktime, 120);
     });
   } finally {
     console.log = originalConsoleLog;

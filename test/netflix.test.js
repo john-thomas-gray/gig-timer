@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   getNetflixRequestRefFromUrl,
   isNetflixAuthoringUrl,
+  isNetflixEditorUrl,
 } from "../utils/netflix.js";
 
 test("Netflix authoring matcher keeps the existing editor URL", () => {
@@ -25,6 +26,22 @@ test("Netflix authoring matcher supports Originator Studio document URLs", () =>
   assert.equal(
     getNetflixRequestRefFromUrl(url),
     "dubtext:dubtext_script_authoring:c1742900-25d4-4052-b4a1-342dbe1fc496",
+  );
+  assert.equal(isNetflixEditorUrl(url), false);
+});
+
+test("Netflix editor matcher excludes Originator Studio documents", () => {
+  assert.equal(
+    isNetflixEditorUrl(
+      "https://authoring.netflixstudios.com/editor?requestRef=example",
+    ),
+    true,
+  );
+  assert.equal(
+    isNetflixEditorUrl(
+      "https://originatorstudio.netflixstudios.com/document/example",
+    ),
+    false,
   );
 });
 
