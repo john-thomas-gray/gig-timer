@@ -20,6 +20,8 @@ let netflixModulePromise;
 
 const LOG_PREFIX = "[Gig Timer]";
 const IDLE_THRESHOLD_SECONDS = 3 * 60;
+const STORED_WORKTIME_LOAD_ATTEMPTS = 5;
+const STORED_WORKTIME_LOAD_RETRY_DELAY_MS = 200;
 let lastActionAt = Date.now();
 
 const formatTimestamp = (ms) => new Date(ms).toLocaleTimeString();
@@ -241,19 +243,14 @@ async function start() {
     url: window.location.href,
   });
 
-  let storedWorktime = -1;
-  try {
-    storedWorktime = await chrome.runtime.sendMessage({
-      action: "get-stored-worktime",
-      url: window.location.href,
-    });
+  const storedWorktimeResult = await loadStoredWorktime();
+  let storedWorktime = elapsedTime;
+  if (storedWorktimeResult.loaded) {
+    storedWorktime = storedWorktimeResult.value;
     console.log(`${LOG_PREFIX} Stored work time loaded`, {
       formatted: formatTime(Number(storedWorktime) || 0),
       seconds: storedWorktime,
     });
-  } catch (e) {
-    console.error("Unable to get stored workTime", e);
-    storedWorktime = elapsedTime;
   }
 
   const numericStoredWorktime = Number(storedWorktime);
@@ -282,6 +279,32 @@ async function start() {
     autoSave();
     updateDisplay(elapsedTime);
   }, 1000);
+}
+
+async function loadStoredWorktime() {
+  let lastError;
+
+  for (let attempt = 1; attempt <= STORED_WORKTIME_LOAD_ATTEMPTS; attempt += 1) {
+    try {
+      const value = await chrome.runtime.sendMessage({
+        action: "get-stored-worktime",
+        url: window.location.href,
+      });
+      return { loaded: true, value };
+    } catch (e) {
+      lastError = e;
+      if (attempt < STORED_WORKTIME_LOAD_ATTEMPTS) {
+        await sleep(STORED_WORKTIME_LOAD_RETRY_DELAY_MS);
+      }
+    }
+  }
+
+  console.error("Unable to get stored workTime", lastError);
+  return { loaded: false };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function autoSave() {
