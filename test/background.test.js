@@ -414,10 +414,13 @@ test("composition-editor project navigation starts the timer from URL metadata w
     });
 
     await waitFor(() => {
-      assert.deepEqual(
-        mock.sentMessages.map((message) => message.action),
-        ["request-assignments-data", "init-stopwatch"],
+      assert.equal(
+        mock.sentMessages.filter(
+          (message) => message.action === "request-assignments-data",
+        ).length,
+        6,
       );
+      assert.equal(mock.sentMessages.at(-1).action, "init-stopwatch");
       assert.equal(mock.storage.projects.length, 1);
       assert.equal(mock.storage.projects[0].id, "Pixelogic Project 188823");
       assert.equal(mock.storage.projects[0].project_id, "188823");
@@ -433,7 +436,80 @@ test("composition-editor project navigation starts the timer from URL metadata w
         warnings,
         "[Gig Timer] Using composition project URL fallback metadata",
       );
+    }, 4000);
+  } finally {
+    console.log = originalConsoleLog;
+    console.warn = originalConsoleWarn;
+    delete globalThis.chrome;
+  }
+});
+
+test("composition-editor project navigation waits for delayed page title before using URL fallback metadata", async () => {
+  const mock = createChromeMock({
+    assignmentResponses: [
+      [],
+      [
+        {
+          ...richPixelogicProject,
+          assignment_url: compositionWorkplaceUrl,
+          episode: "7",
+          project_id: "188823",
+          season: "2",
+          task_id: "15591854",
+          title: "Delayed Pixelogic Title",
+          workplace_url:
+            "https://phelix.pixelogicmedia.com/operations-manager/tasks/15591854",
+        },
+      ],
+    ],
+    tabUrl: compositionWorkplaceUrl,
+  });
+  const originalConsoleLog = console.log;
+  const originalConsoleWarn = console.warn;
+  const warnings = [];
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+  console.warn = (...args) => {
+    warnings.push(args);
+  };
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.historyStateUpdated.length, 1),
+    );
+
+    mock.listeners.historyStateUpdated[0]({
+      frameId: 0,
+      tabId: 23,
+      url: compositionWorkplaceUrl,
     });
+
+    await waitFor(() => {
+      assert.equal(
+        mock.sentMessages.filter(
+          (message) => message.action === "request-assignments-data",
+        ).length,
+        2,
+      );
+      assert.equal(mock.storage.projects.length, 1);
+      assert.equal(
+        mock.storage.projects[0].id,
+        "Delayed Pixelogic Title: Season 2: Episode 7",
+      );
+      assert.equal(mock.storage.projects[0].title, "Delayed Pixelogic Title");
+      assert.equal(
+        mock.storage.lastProjectId,
+        "Delayed Pixelogic Title: Season 2: Episode 7",
+      );
+    });
+    assert.equal(
+      warnings.some(
+        ([message]) =>
+          message === "[Gig Timer] Using composition project URL fallback metadata",
+      ),
+      false,
+    );
   } finally {
     console.log = originalConsoleLog;
     console.warn = originalConsoleWarn;

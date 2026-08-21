@@ -875,17 +875,17 @@ async function setUpCompositionProjectPage(tabId, url) {
     });
 
     if (project?.id && !isFallback) return projects;
-    if (!project?.id) {
-      const fallbackProjects = await setUpCompositionProjectUrlFallback(url);
-      if (fallbackProjects.length > 0) return fallbackProjects;
-    }
 
     if (attempt < COMPOSITION_METADATA_RETRY_ATTEMPTS) {
       await sleep(COMPOSITION_METADATA_RETRY_DELAY_MS);
     }
   }
 
-  return projects;
+  const project = projects.find((candidate) => candidate?.id);
+  if (project?.id) return projects;
+
+  const fallbackProjects = await setUpCompositionProjectUrlFallback(url);
+  return fallbackProjects.length > 0 ? fallbackProjects : projects;
 }
 
 async function setUpCompositionProjectUrlFallback(url) {

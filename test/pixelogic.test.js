@@ -279,6 +279,29 @@ Audio Description English (US) [ OM-9508697 ] - 0
   assert.equal(normalized.invoice_amount, 240);
 });
 
+test("composition-editor title parsing ignores player asset notification popups", () => {
+  const text = `
+Composition Editor
+A new version of asset Devil You Know, The: Killer in the Family_Season 1_E001_Episode 1_Broadcast_Original
+Devil You Know, The: Killer in the Family_Season 1_E001_Episode 1_Broadcast_Original
+[ OM-1234567 / 7654321 ]
+00:00:00:00
+00:42:10:00
+23.976
+Audio Description English (US)
+`;
+
+  const projects = parsePixelogicCompositionAssignmentsText(
+    text,
+    compositionUrl,
+  );
+
+  assert.equal(projects.length, 1);
+  assert.equal(projects[0].title, "Devil You Know, The: Killer in the Family");
+  assert.equal(projects[0].season, "1");
+  assert.equal(projects[0].episode, "1");
+});
+
 test("operations-manager task data is scraped into workplace metadata", () => {
   const text = `
 Tasks/Task View

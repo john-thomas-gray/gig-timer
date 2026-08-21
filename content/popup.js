@@ -510,6 +510,12 @@ async function updateProjectFromForm() {
       activeProjectId = projectToSave.id;
     }
     selectedProject = savedProject;
+    if (shouldUpdateWorkTime) {
+      latestStopwatchTime = Number.isFinite(selectedProject.work_time)
+        ? selectedProject.work_time
+        : latestStopwatchTime;
+      workTimeManuallyEdited = false;
+    }
     setFormText();
     if (shouldUpdateWorkTime) {
       await syncStopwatchFromPopup();

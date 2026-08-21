@@ -385,6 +385,7 @@ function extractKnownLabel(text) {
 function findCompositionTitle(lines) {
   for (const line of lines) {
     if (line.includes("--")) continue;
+    if (isCompositionPlayerNotification(line)) continue;
     const titleParts = parsePixelogicTitle(line);
     if (titleParts?.title) return titleParts;
   }
@@ -442,6 +443,10 @@ function parsePixelogicTitle(rawTitle) {
   }
 
   return undefined;
+}
+
+function isCompositionPlayerNotification(line) {
+  return /^A new version of asset\b/i.test(cleanString(line) ?? "");
 }
 
 function cleanTitle(value) {
