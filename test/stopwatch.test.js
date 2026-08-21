@@ -3,6 +3,12 @@ import test from "node:test";
 
 const compositionUrl =
   "https://phelix.pixelogicmedia.com/composition-editor/projects/105667?taskId=13500851&grid1=spottingCreation";
+const compositionEditorUrl =
+  "https://phelix.pixelogicmedia.com/composition-editor";
+const compositionHashUrl =
+  "https://phelix.pixelogicmedia.com/composition-editor/#/projects/105667?taskId=13500851&grid1=spottingCreation";
+const netflixAuthoringUrl =
+  "https://authoring.netflixstudios.com/editor?requestRef=dubtext%3Adubtext_script_authoring%3A28fbbe84-bb57-4cf8-b97c-f9e666d6e63d";
 
 function createElementMock(tagName) {
   return {
@@ -83,10 +89,10 @@ async function waitFor(assertion, timeoutMs = 1000) {
   throw lastError;
 }
 
-function installStopwatchGlobals(mock) {
+function installStopwatchGlobals(mock, { url = compositionUrl } = {}) {
   globalThis.chrome = mock.chrome;
   globalThis.document = createDocumentMock();
-  globalThis.window = { location: { href: compositionUrl } };
+  globalThis.window = { location: { href: url } };
   globalThis.setInterval = () => 1;
   globalThis.clearInterval = () => {};
 }
@@ -161,6 +167,80 @@ test("stopwatch starts from supplied time without requesting it again", async ()
     await waitFor(() => assert.deepEqual(timeResponse, { elapsedTime: 120 }));
     assert.deepEqual(mock.sentMessages, []);
     assert.deepEqual(errors, []);
+  } finally {
+    restoreStopwatchGlobals(originals);
+  }
+});
+
+test("stopwatch starts on Netflix authoring pages through the shared init path", async () => {
+  const mock = createChromeMock();
+  const originals = captureOriginals();
+  installStopwatchGlobals(mock, { url: netflixAuthoringUrl });
+  console.error = () => {};
+  console.log = () => {};
+
+  try {
+    await importFreshStopwatch();
+    await waitFor(() => assert.equal(mock.runtimeMessages.length, 1));
+
+    let initResponse;
+    mock.runtimeMessages[0](
+      {
+        action: "init-stopwatch",
+        projectId: "Netflix project",
+        source: "background.js",
+        storedWorktime: 45,
+      },
+      {},
+      (response) => {
+        initResponse = response;
+      },
+    );
+
+    await waitFor(() => assert.deepEqual(initResponse, { initiated: true }));
+
+    const stopwatch = globalThis.document.body.children.find(
+      (child) => child.id === "stopwatch",
+    );
+    assert.ok(stopwatch);
+  } finally {
+    restoreStopwatchGlobals(originals);
+  }
+});
+
+test("stopwatch rechecks Pixelogic URL after composition-editor hash navigation", async () => {
+  const mock = createChromeMock();
+  const originals = captureOriginals();
+  installStopwatchGlobals(mock, { url: compositionEditorUrl });
+  console.error = () => {};
+  console.log = () => {};
+
+  try {
+    await importFreshStopwatch();
+    await waitFor(() => assert.equal(mock.runtimeMessages.length, 1));
+
+    globalThis.window.location.href = compositionHashUrl;
+
+    let initResponse;
+    mock.runtimeMessages[0](
+      {
+        action: "init-stopwatch",
+        projectId: "Pixelogic project",
+        source: "background.js",
+        storedWorktime: 30,
+      },
+      {},
+      (response) => {
+        initResponse = response;
+      },
+    );
+
+    await waitFor(() => assert.deepEqual(initResponse, { initiated: true }));
+
+    const stopwatch = globalThis.document.body.children.find(
+      (child) => child.id === "stopwatch",
+    );
+    assert.ok(stopwatch);
   } finally {
     restoreStopwatchGlobals(originals);
   }

@@ -19,6 +19,8 @@ import { normalizeProjectData } from "../web-accessible-resources/normalization.
 
 const compositionUrl =
   "https://phelix.pixelogicmedia.com/composition-editor/projects/105667?taskId=13500851&grid1=spottingCreation";
+const compositionHashUrl =
+  "https://phelix.pixelogicmedia.com/composition-editor/#/projects/105667?taskId=13500851&grid1=spottingCreation";
 
 const operationsManagerUrl =
   "https://phelix.pixelogicmedia.com/operations-manager/tasks/13500851";
@@ -83,6 +85,7 @@ test("legacy bridge injection is skipped for new Pixelogic routes", () => {
 
 test("composition-editor project URLs are recognized as timer pages", () => {
   assert.equal(isTimerPageUrl(compositionUrl), true);
+  assert.equal(isTimerPageUrl(compositionHashUrl), true);
   assert.equal(isTimerPageUrl(operationsManagerUrl), false);
   assert.equal(
     isTimerPageUrl("https://phelix.pixelogicmedia.com/composition-editor"),
@@ -215,6 +218,19 @@ test("composition-editor parsing falls back to URL project metadata", () => {
   assert.equal(projects[0].task_id, "13500851");
   assert.equal(projects[0].project_id, "105667");
   assert.equal(projects[0].assignment_url, compositionUrl);
+  assert.equal(projects[0].workplace_url, operationsManagerUrl);
+});
+
+test("composition-editor hash routes fall back to URL project metadata", () => {
+  const projects = parsePixelogicCompositionAssignmentsText(
+    "Composition Editor\nLoading",
+    compositionHashUrl,
+  );
+
+  assert.equal(projects.length, 1);
+  assert.equal(projects[0].task_id, "13500851");
+  assert.equal(projects[0].project_id, "105667");
+  assert.equal(projects[0].assignment_url, compositionHashUrl);
   assert.equal(projects[0].workplace_url, operationsManagerUrl);
 });
 

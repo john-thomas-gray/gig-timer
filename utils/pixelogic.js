@@ -100,9 +100,13 @@ export function isPixelogicCompositionEditorUrl(url) {
 
 export function isPixelogicCompositionProjectUrl(url) {
   const parsed = parseUrl(url);
+  const hashRoute = getHashRouteUrl(parsed);
+
   return (
     parsed?.hostname === PIXELOGIC_HOST &&
-    /^\/composition-editor\/projects\/\d+/.test(parsed.pathname)
+    (isCompositionProjectPath(parsed.pathname) ||
+      (parsed.pathname.startsWith("/composition-editor") &&
+        isHashCompositionProjectPath(hashRoute?.pathname)))
   );
 }
 
@@ -594,14 +598,22 @@ function findEpisodeCode(text) {
 
 function getTaskIdFromUrl(url) {
   const parsed = parseUrl(url);
+  const hashRoute = getHashRouteUrl(parsed);
+
   return (
     parsed?.searchParams.get("taskId") ??
-    parsed?.pathname.match(OPERATIONS_MANAGER_TASK_PATH_PATTERN)?.[1]
+    hashRoute?.searchParams.get("taskId") ??
+    parsed?.pathname.match(OPERATIONS_MANAGER_TASK_PATH_PATTERN)?.[1] ??
+    hashRoute?.pathname.match(OPERATIONS_MANAGER_TASK_PATH_PATTERN)?.[1]
   );
 }
 
 function getProjectIdFromCompositionUrl(url) {
-  return parseUrl(url)?.pathname.match(/\/projects\/(\d+)/)?.[1];
+  const parsed = parseUrl(url);
+  return (
+    getCompositionProjectIdFromPath(parsed?.pathname) ??
+    getCompositionProjectIdFromPath(getHashRouteUrl(parsed)?.pathname)
+  );
 }
 
 function buildWorkplaceUrlFromTaskId(taskId) {
@@ -658,4 +670,29 @@ function parseUrl(url) {
   } catch {
     return undefined;
   }
+}
+
+function getHashRouteUrl(parsed) {
+  const hash = parsed?.hash?.replace(/^#/, "").replace(/^!/, "");
+  if (!hash) return undefined;
+
+  try {
+    return new URL(hash.startsWith("/") ? hash : `/${hash}`, parsed.origin);
+  } catch {
+    return undefined;
+  }
+}
+
+function isCompositionProjectPath(pathname) {
+  return /^\/composition-editor\/projects\/\d+(?:\/|$)/.test(pathname ?? "");
+}
+
+function isHashCompositionProjectPath(pathname) {
+  return /^\/(?:composition-editor\/)?projects\/\d+(?:\/|$)/.test(
+    pathname ?? "",
+  );
+}
+
+function getCompositionProjectIdFromPath(pathname) {
+  return pathname?.match(/(?:^|\/)projects\/(\d+)(?:\/|$)/)?.[1];
 }

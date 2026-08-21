@@ -3,6 +3,10 @@ import test from "node:test";
 
 const compositionUrl =
   "https://phelix.pixelogicmedia.com/composition-editor/projects/105667?taskId=13500851&grid1=spottingCreation";
+const compositionHashUrl =
+  "https://phelix.pixelogicmedia.com/composition-editor/#/projects/105667?taskId=13500851&grid1=spottingCreation";
+const compositionWorkplaceUrl =
+  "https://phelix.pixelogicmedia.com/composition-editor/projects/188823?taskId=15591854&grid1=spottingCreation";
 const operationsManagerUrl =
   "https://phelix.pixelogicmedia.com/operations-manager/tasks/13500851";
 const netflixAuthoringUrl =
@@ -28,6 +32,7 @@ function createChromeMock({
   const listeners = {
     completed: [],
     historyStateUpdated: [],
+    referenceFragmentUpdated: [],
     runtimeMessages: [],
     storageChanges: [],
   };
@@ -158,6 +163,11 @@ function createChromeMock({
         onHistoryStateUpdated: {
           addListener(listener) {
             listeners.historyStateUpdated.push(listener);
+          },
+        },
+        onReferenceFragmentUpdated: {
+          addListener(listener) {
+            listeners.referenceFragmentUpdated.push(listener);
           },
         },
       },
@@ -327,6 +337,106 @@ test("history navigation to a composition-editor project creates the project and
     });
   } finally {
     console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("fragment navigation to a composition-editor project creates the project and starts the timer", async () => {
+  const mock = createChromeMock({
+    assignmentResponses: [
+      [{ ...richPixelogicProject, assignment_url: compositionHashUrl }],
+    ],
+    tabUrl: compositionHashUrl,
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.referenceFragmentUpdated.length, 1),
+    );
+
+    mock.listeners.referenceFragmentUpdated[0]({
+      frameId: 0,
+      tabId: 7,
+      url: compositionHashUrl,
+    });
+
+    await waitFor(() => {
+      assert.deepEqual(
+        mock.sentMessages.map((message) => message.action),
+        ["request-assignments-data", "init-stopwatch"],
+      );
+      assert.equal(
+        mock.storage.projects[0].id,
+        "Welcome to Wrexham: Season 5: Episode 54",
+      );
+      assert.equal(
+        mock.storage.lastProjectId,
+        "Welcome to Wrexham: Season 5: Episode 54",
+      );
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("composition-editor project navigation starts the timer from URL metadata when page scrape returns no projects", async () => {
+  const mock = createChromeMock({
+    assignmentResponses: [[]],
+    tabUrl: compositionWorkplaceUrl,
+  });
+  const originalConsoleLog = console.log;
+  const originalConsoleWarn = console.warn;
+  const logs = [];
+  const warnings = [];
+  globalThis.chrome = mock.chrome;
+  console.log = (...args) => {
+    logs.push(args);
+  };
+  console.warn = (...args) => {
+    warnings.push(args);
+  };
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.historyStateUpdated.length, 1),
+    );
+
+    mock.listeners.historyStateUpdated[0]({
+      frameId: 0,
+      tabId: 22,
+      url: compositionWorkplaceUrl,
+    });
+
+    await waitFor(() => {
+      assert.deepEqual(
+        mock.sentMessages.map((message) => message.action),
+        ["request-assignments-data", "init-stopwatch"],
+      );
+      assert.equal(mock.storage.projects.length, 1);
+      assert.equal(mock.storage.projects[0].id, "Pixelogic Project 188823");
+      assert.equal(mock.storage.projects[0].project_id, "188823");
+      assert.equal(mock.storage.projects[0].task_id, "15591854");
+      assert.equal(mock.storage.lastProjectId, "Pixelogic Project 188823");
+      const initMessage = mock.sentMessages.find(
+        (message) => message.action === "init-stopwatch",
+      );
+      assert.equal(initMessage.projectId, "Pixelogic Project 188823");
+      assert.equal(initMessage.storedWorktime, 0);
+      assertLogMessage(logs, "[Gig Timer] Sending stopwatch init");
+      assertLogMessage(
+        warnings,
+        "[Gig Timer] Using composition project URL fallback metadata",
+      );
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    console.warn = originalConsoleWarn;
     delete globalThis.chrome;
   }
 });

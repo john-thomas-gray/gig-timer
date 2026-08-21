@@ -14,6 +14,7 @@ import {
   isPixelogicCompositionProjectUrl,
   isTimerPageUrl,
   isWorkplaceUrl,
+  parsePixelogicCompositionAssignmentsText,
 } from "./utils/pixelogic.js";
 import {
   getNetflixRequestRefFromUrl,
@@ -109,7 +110,7 @@ function addListeners() {
       if (isAssignmentPage) {
         console.log(`${LOG_PREFIX} Assignment page recognized`, { tabId, url });
         const projects = isCompositionProject
-          ? await setUpCompositionProjectPage(tabId)
+          ? await setUpCompositionProjectPage(tabId, url)
           : await setUpAssignmentsPage(tabId);
         if (isCompositionProject) {
           const project = projects?.find((candidate) => candidate?.id);
@@ -187,6 +188,9 @@ function addListeners() {
 
   chrome.webNavigation.onCompleted.addListener(handleTimerPageNavigation);
   chrome.webNavigation.onHistoryStateUpdated?.addListener(
+    handleTimerPageNavigation,
+  );
+  chrome.webNavigation.onReferenceFragmentUpdated?.addListener(
     handleTimerPageNavigation,
   );
 
@@ -851,7 +855,7 @@ async function initStopwatch(tabId, projectId) {
 
 // Assignments
 
-async function setUpCompositionProjectPage(tabId) {
+async function setUpCompositionProjectPage(tabId, url) {
   let projects = [];
 
   for (
@@ -871,6 +875,10 @@ async function setUpCompositionProjectPage(tabId) {
     });
 
     if (project?.id && !isFallback) return projects;
+    if (!project?.id) {
+      const fallbackProjects = await setUpCompositionProjectUrlFallback(url);
+      if (fallbackProjects.length > 0) return fallbackProjects;
+    }
 
     if (attempt < COMPOSITION_METADATA_RETRY_ATTEMPTS) {
       await sleep(COMPOSITION_METADATA_RETRY_DELAY_MS);
@@ -878,6 +886,16 @@ async function setUpCompositionProjectPage(tabId) {
   }
 
   return projects;
+}
+
+async function setUpCompositionProjectUrlFallback(url) {
+  const fallbackProjects = parsePixelogicCompositionAssignmentsText("", url);
+  if (!fallbackProjects.length) return [];
+
+  console.warn(`${LOG_PREFIX} Using composition project URL fallback metadata`, {
+    url,
+  });
+  return formatAndNormalizeAssignmentProjects(fallbackProjects);
 }
 
 async function setUpAssignmentsPage(tabId) {

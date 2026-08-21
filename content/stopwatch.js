@@ -18,6 +18,7 @@ let lastAutoSaveSecond = -1;
 let idleSeconds = 0;
 let isIdle = false;
 let isManualPause = false;
+let isMonitoringUserActions = false;
 let activeProjectId;
 let pixelogicModulePromise;
 let netflixModulePromise;
@@ -44,12 +45,7 @@ stopwatchContextReady
   .then(({ isTimerPage }) => {
     if (!isTimerPage) return;
 
-    console.log(`${LOG_PREFIX} Stopwatch content script active`, {
-      url: window.location.href,
-    });
-
-    document.addEventListener("pointermove", monitorUserActions);
-    document.addEventListener("keydown", monitorUserActions);
+    activateStopwatchPage();
   })
   .catch((error) => {
     console.error(`${LOG_PREFIX} Stopwatch content script setup failed`, error);
@@ -72,11 +68,12 @@ async function loadStopwatchContext() {
 function stopwatchListener(msg, sender, sendResponse) {
   if (msg.source === "background.js" && msg.action === "init-stopwatch") {
     (async () => {
-      const { isTimerPage } = await stopwatchContextReady;
+      const { isTimerPage } = await loadStopwatchContext();
       if (!isTimerPage) {
         sendResponse({ initiated: false });
         return;
       }
+      activateStopwatchPage();
       console.log(`${LOG_PREFIX} Stopwatch init message received`, {
         projectId: msg.projectId,
         url: window.location.href,
@@ -93,8 +90,9 @@ function stopwatchListener(msg, sender, sendResponse) {
 
   if (msg.action === "set-stopwatch-time") {
     (async () => {
-      const { isTimerPage } = await stopwatchContextReady;
+      const { isTimerPage } = await loadStopwatchContext();
       if (!isTimerPage) return;
+      activateStopwatchPage();
       activeProjectId = msg.projectId ?? activeProjectId;
       syncStopwatchTime(msg.elapsedTime);
     })().catch((error) => {
@@ -105,7 +103,7 @@ function stopwatchListener(msg, sender, sendResponse) {
 
   if (msg.action === "get-stopwatch-time") {
     (async () => {
-      const { isTimerPage } = await stopwatchContextReady;
+      const { isTimerPage } = await loadStopwatchContext();
       if (!isTimerPage) {
         sendResponse(undefined);
         return;
@@ -117,6 +115,18 @@ function stopwatchListener(msg, sender, sendResponse) {
     });
     return true;
   }
+}
+
+function activateStopwatchPage() {
+  if (isMonitoringUserActions) return;
+
+  console.log(`${LOG_PREFIX} Stopwatch content script active`, {
+    url: window.location.href,
+  });
+
+  document.addEventListener("pointermove", monitorUserActions);
+  document.addEventListener("keydown", monitorUserActions);
+  isMonitoringUserActions = true;
 }
 
 async function initStopwatch(storedWorktime) {
