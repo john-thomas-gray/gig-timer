@@ -8,7 +8,13 @@
     "default_popup": "html/popup.html",
     "default_title": "Gig Timer"
   },
-  "host_permissions": ["*://*/*"],
+  "host_permissions": [
+    "https://phelix.pixelogicmedia.com/*",
+    "https://authoring.netflixstudios.com/*",
+    "https://originatorstudio.netflixstudios.com/*",
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
+  ],
   "permissions": [
     "storage",
     "tabs",
@@ -23,7 +29,11 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*/*"],
+      "matches": [
+        "https://phelix.pixelogicmedia.com/*",
+        "https://authoring.netflixstudios.com/*",
+        "https://originatorstudio.netflixstudios.com/*"
+      ],
       "js": [
         "content/inject-bridge.js",
         "content/stopwatch.js",
@@ -37,11 +47,16 @@
   ],
   "web_accessible_resources": [
     {
-      "matches": ["*://*/*"],
+      "matches": [
+        "https://phelix.pixelogicmedia.com/*",
+        "https://authoring.netflixstudios.com/*",
+        "https://originatorstudio.netflixstudios.com/*"
+      ],
       "resources": [
         "web-accessible-resources/bridge.js",
         "web-accessible-resources/normalization.js",
         "utils/netflix.js",
+        "utils/workplace.js",
         "utils/pixelogic.js"
       ]
     }

@@ -3,6 +3,18 @@ const NETFLIX_AUTHORING_HOSTS = new Set([
   "originatorstudio.netflixstudios.com",
 ]);
 
+export function detectNetflixPage(url) {
+  if (!NETFLIX_AUTHORING_HOSTS.has(parseUrl(url)?.hostname)) return undefined;
+  const isProjectMetadataPage = isNetflixAuthoringUrl(url);
+  return {
+    site: "netflix",
+    isAssignmentsPage: false,
+    isProjectMetadataPage,
+    isTimerPage: isProjectMetadataPage,
+    metadataSource: "workplace",
+  };
+}
+
 export function isNetflixAuthoringUrl(url) {
   const parsed = parseUrl(url);
   if (!parsed || !NETFLIX_AUTHORING_HOSTS.has(parsed.hostname)) return false;

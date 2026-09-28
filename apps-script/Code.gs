@@ -12,6 +12,7 @@ const COLUMNS = [
   { key: "title", header: "Title", type: "text" },
   { key: "season", header: "Season", type: "integer" },
   { key: "episode", header: "Episode", type: "integer" },
+  { key: "genre", header: "Genre", type: "text" },
   { key: "client", header: "Client", type: "text" },
   { key: "contractor", header: "Contractor", type: "text" },
   { key: "runtime", header: "Runtime", type: "duration" },
@@ -40,6 +41,7 @@ const HEADER_ALIASES = {
   date_assigned: ["date assigned", "date_assigned", "assigned", "assigned date"],
   date_due: ["date due", "date_due", "due", "due date"],
   episode: ["episode", "episode number", "episode_number"],
+  genre: ["genre"],
   hourly_rate: ["hourly rate", "hourly_rate"],
   id: ["project id", "id"],
   invoice_amount: ["invoice amount", "invoice_amount", "invoice", "amount", "total"],
@@ -357,6 +359,7 @@ function normalizeProject_(rawProject, options) {
     normalizeMoney_(project.hourly_rate) || calculateHourlyRate_(project.invoice_amount, project.work_time);
   project.client = cleanText_(project.client);
   project.contractor = cleanText_(project.contractor);
+  project.genre = cleanText_(project.genre);
   project.workplace_url = cleanText_(project.workplace_url);
   project.request_ref = cleanText_(project.request_ref);
   project.id = cleanText_(project.id) || buildProjectId_(project);

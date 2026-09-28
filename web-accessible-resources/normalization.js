@@ -4,6 +4,17 @@ function cleanString(value) {
   return cleaned || undefined;
 }
 
+const CLIENT_CODENAME_MAP = new Map([
+  ["alula", "Apple+"],
+]);
+
+export function normalizeClientInput(value) {
+  const cleaned = cleanString(value);
+  if (!cleaned) return undefined;
+
+  return CLIENT_CODENAME_MAP.get(cleaned.toLowerCase()) ?? cleaned;
+}
+
 function stripWrappingQuotes(value) {
   const cleaned = cleanString(value);
   if (!cleaned) return undefined;
@@ -58,6 +69,10 @@ function parseEpisodePart(value) {
   return parseSeasonEpisodeInput(value).episode;
 }
 
+function findEpisodeCode(value) {
+  return cleanString(value)?.match(/(?:^|[_\s-])E0*(\d+)(?=$|[_\s-])/i)?.[1];
+}
+
 export function parseTitleAndEpisode(rawTitle) {
   try {
     const source = cleanString(rawTitle);
@@ -66,6 +81,19 @@ export function parseTitleAndEpisode(rawTitle) {
     }
 
     const withoutAppSuffix = source.replace(/\s+-\s+Authoring\s*$/i, "");
+    const pixelogicMatch = withoutAppSuffix.match(
+      /^(.*?)_Season\s*0*(\d+)(?:_(?:E)?0*\d+)?(?:_Episode\s*0*(\d+))?/i,
+    );
+    if (pixelogicMatch) {
+      return {
+        title: cleanString(pixelogicMatch[1].replace(/_/g, " ")),
+        season: String(Number(pixelogicMatch[2])),
+        episode: normalizeNumberToken(
+          findEpisodeCode(withoutAppSuffix) ?? pixelogicMatch[3],
+        ),
+      };
+    }
+
     const parts = withoutAppSuffix
       .split(":")
       .map((part) => stripWrappingQuotes(part))
@@ -314,6 +342,7 @@ const projectTemplate = {
   date_completed: undefined,
   date_due: undefined,
   episode: undefined,
+  genre: undefined,
   hourly_rate: undefined,
   invoice_amount: undefined,
   rate: undefined,
@@ -374,6 +403,14 @@ export function normalizeProjectData(project) {
 
         case "episode":
           value = episode;
+          break;
+
+        case "genre":
+          value = cleanString(value);
+          break;
+
+        case "client":
+          value = normalizeClientInput(value);
           break;
 
         case "hourly_rate":

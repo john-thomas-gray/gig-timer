@@ -4,6 +4,8 @@
 
 let normalizationModule;
 const DEFAULT_PROJECT_OPTION_VALUE = "New Project";
+const MANUAL_PROJECT_FIELDS_KEY = "_manual_fields";
+const PROJECT_CODENAME_KEY = "codename";
 
 async function loadNormalizationModule() {
   if (!normalizationModule) {
@@ -52,8 +54,22 @@ async function init() {
 
   projectSelect.addEventListener("change", onSelectChange);
 
-  exportButton.addEventListener("click", () => {
-    exportProject();
+  const exportStatus = document.createElement("p");
+  exportStatus.id = "exportStatus";
+  exportStatus.setAttribute("role", "status");
+  exportButton.parentElement.appendChild(exportStatus);
+
+  exportButton.addEventListener("click", async () => {
+    exportButton.disabled = true;
+    exportStatus.textContent = "Saving and exporting…";
+    try {
+      await exportProject();
+      exportStatus.textContent = "Exported to spreadsheet.";
+    } catch (error) {
+      exportStatus.textContent = error.message || "Export failed. Please try again.";
+    } finally {
+      exportButton.disabled = false;
+    }
   });
 
   updateButton.addEventListener("click", async () => {
@@ -125,7 +141,7 @@ function buildProjectOptions(projects) {
   const optgroups = {};
 
   projects.forEach((project) => {
-    const title = project.title || "Untitled";
+    const title = getSeriesTitle(project) || "Untitled";
 
     if (!optgroups[title]) {
       const optgroup = document.createElement("optgroup");
@@ -173,6 +189,7 @@ function buildFormInputs() {
   const formSchema = {
     season: "text",
     episode: "text",
+    genre: "text",
     work_time: "text",
     workplace_url: "text",
     runtime: "text",
@@ -283,6 +300,196 @@ function formatFieldLabel(key) {
       (word) => overrides[word] ?? word.charAt(0).toUpperCase() + word.slice(1),
     )
     .join(" ");
+}
+
+function cleanText(value) {
+  if (value === undefined || value === null) return undefined;
+  const cleaned = String(value).replace(/\s+/g, " ").trim();
+  return cleaned || undefined;
+}
+
+function isDefinedProjectValue(value) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string") return value.trim().length > 0;
+  return true;
+}
+
+const PIXELOGIC_DEFAULT_RATE = 6;
+
+function numericRate(value) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const number =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^0-9.-]/g, ""));
+
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function isPixelogicDefaultRate(value) {
+  return numericRate(value) === PIXELOGIC_DEFAULT_RATE;
+}
+
+function getManualProjectFields(project) {
+  const fields = project?.[MANUAL_PROJECT_FIELDS_KEY];
+  if (!Array.isArray(fields)) return new Set();
+
+  return new Set(
+    fields
+      .map((field) => cleanText(field))
+      .filter(Boolean),
+  );
+}
+
+function withManualProjectFields(project, fields) {
+  const mergedFields = new Set([
+    ...getManualProjectFields(project),
+    ...fields.filter(Boolean),
+  ]);
+
+  if (!mergedFields.size) return project;
+
+  return {
+    ...project,
+    [MANUAL_PROJECT_FIELDS_KEY]: [...mergedFields].sort(),
+  };
+}
+
+function hasManualProjectField(project, key) {
+  return getManualProjectFields(project).has(key);
+}
+
+function getSeriesDefaultValue(project, key) {
+  if (key === "rate") {
+    return isDefinedProjectValue(project?.rate) ? project.rate : undefined;
+  }
+
+  return cleanText(project?.[key]);
+}
+
+function parseNumberToken(value) {
+  const match = cleanText(value)?.match(/\d+/);
+  if (!match) return undefined;
+  return String(Number(match[0]));
+}
+
+function findPixelogicEpisodeCode(value) {
+  return cleanText(value)?.match(/(?:^|[_\s-])E0*(\d+)(?=$|[_\s-])/i)?.[1];
+}
+
+function parseProjectTitleParts(value) {
+  const source = cleanText(value);
+  if (!source) return {};
+
+  const pixelogicMatch = source.match(
+    /^(.*?)_Season\s*0*(\d+)(?:_E0*\d+)?(?:_Episode\s*0*(\d+))?/i,
+  );
+  if (pixelogicMatch) {
+    return {
+      title: cleanText(pixelogicMatch[1].replace(/_/g, " ")),
+      season: String(Number(pixelogicMatch[2])),
+      episode: parseNumberToken(
+        findPixelogicEpisodeCode(source) ?? pixelogicMatch[3],
+      ),
+    };
+  }
+
+  const colonMatch = source.match(
+    /^(.*?):\s*Season\s*0*(\d+)\s*:\s*Episode\s*0*(\d+)/i,
+  );
+  if (colonMatch) {
+    return {
+      title: cleanText(colonMatch[1]),
+      season: String(Number(colonMatch[2])),
+      episode: String(Number(colonMatch[3])),
+    };
+  }
+
+  return { title: source };
+}
+
+function getSeriesTitle(project) {
+  const parsedTitle = parseProjectTitleParts(project?.title);
+  const parsedId = parseProjectTitleParts(project?.id);
+  return (
+    parsedTitle.title ??
+    cleanText(project?.title) ??
+    parsedId.title ??
+    cleanText(project?.id)
+  );
+}
+
+function getSeriesKey(project) {
+  const title = getSeriesTitle(project);
+  return title?.toLowerCase() ?? "";
+}
+
+function getSeasonKey(project) {
+  const parsedTitle = parseProjectTitleParts(project?.title);
+  const parsedId = parseProjectTitleParts(project?.id);
+  const season =
+    cleanText(project?.season) ??
+    parsedTitle.season ??
+    parsedId.season;
+
+  if (!season) return "";
+  const match = season.match(/\d+/);
+  return match ? String(Number(match[0])) : "";
+}
+
+function getSeriesSeasonKey(project) {
+  const seriesKey = getSeriesKey(project);
+  const seasonKey = getSeasonKey(project);
+  return seriesKey && seasonKey ? `${seriesKey}::${seasonKey}` : "";
+}
+
+function applySeriesDefaultsToProjects(projects, sourceProject) {
+  const seriesKey = getSeriesKey(sourceProject);
+  const seriesSeasonKey = getSeriesSeasonKey(sourceProject);
+  if (!seriesKey) return projects;
+
+  const defaults = {
+    client: getSeriesDefaultValue(sourceProject, "client"),
+    genre: getSeriesDefaultValue(sourceProject, "genre"),
+  };
+  const defaultKeys = Object.keys(defaults).filter((key) =>
+    isDefinedProjectValue(defaults[key]),
+  );
+  const rateDefault = getSeriesDefaultValue(sourceProject, "rate");
+  const shouldApplyRate =
+    seriesSeasonKey && isDefinedProjectValue(rateDefault);
+  if (!defaultKeys.length && !shouldApplyRate) return projects;
+
+  return projects.map((project) => {
+    if (getSeriesKey(project) !== seriesKey) {
+      return project;
+    }
+
+    const updatedProject = { ...project };
+    let didUpdate = false;
+    defaultKeys.forEach((key) => {
+      if (hasManualProjectField(updatedProject, key)) return;
+
+      if (!isDefinedProjectValue(getSeriesDefaultValue(updatedProject, key))) {
+        updatedProject[key] = defaults[key];
+        didUpdate = true;
+      }
+    });
+
+    if (
+      shouldApplyRate &&
+      getSeriesSeasonKey(updatedProject) === seriesSeasonKey &&
+      !hasManualProjectField(updatedProject, "rate") &&
+      (!isDefinedProjectValue(updatedProject.rate) ||
+        isPixelogicDefaultRate(updatedProject.rate))
+    ) {
+      updatedProject.rate = rateDefault;
+      didUpdate = true;
+    }
+
+    return didUpdate ? updatedProject : project;
+  });
 }
 
 function formatCurrency(value) {
@@ -428,7 +635,8 @@ async function normalizeFormValues(rawValues, shouldUpdateWorkTime) {
   const normalized = {
     title: parsedTitle.title ?? rawValues.title?.trim() ?? undefined,
     contractor: rawValues.contractor?.trim() || undefined,
-    client: rawValues.client?.trim() || undefined,
+    client: module.normalizeClientInput(rawValues.client),
+    genre: cleanText(rawValues.genre),
     workplace_url: rawValues.workplace_url?.trim() || undefined,
     season,
     episode,
@@ -461,6 +669,60 @@ async function normalizeFormValues(rawValues, shouldUpdateWorkTime) {
   return normalized;
 }
 
+function normalizeComparableValue(key, value) {
+  if (value === undefined || value === null) return "";
+
+  if (["runtime", "rate", "hourly_rate", "invoice_amount"].includes(key)) {
+    const number = numericRate(value);
+    return Number.isFinite(number) ? String(number) : "";
+  }
+
+  return cleanText(value) ?? "";
+}
+
+function getSelectedProjectComparableValue(key) {
+  if (!selectedProject) return undefined;
+  if (key === "date_completed") {
+    return selectedProject.date_completed ?? selectedProject.date_assigned;
+  }
+
+  return selectedProject[key];
+}
+
+function getManuallyChangedFields(rawValues, normalizedValues) {
+  return Object.keys(rawValues).filter((key) => {
+    if (key === "work_time") return false;
+    const currentValue = getSelectedProjectComparableValue(key);
+    if (
+      !isDefinedProjectValue(currentValue) &&
+      !cleanText(rawValues[key])
+    ) {
+      return false;
+    }
+
+    return (
+      normalizeComparableValue(key, normalizedValues[key]) !==
+      normalizeComparableValue(key, currentValue)
+    );
+  });
+}
+
+function applyCodenameFromTitleEdit(project, changedFields) {
+  if (
+    !changedFields.includes("title") ||
+    project[PROJECT_CODENAME_KEY] ||
+    !cleanText(selectedProject?.title) ||
+    cleanText(selectedProject.title) === cleanText(project.title)
+  ) {
+    return project;
+  }
+
+  return {
+    ...project,
+    [PROJECT_CODENAME_KEY]: selectedProject.title,
+  };
+}
+
 async function updateProjectFromForm() {
   try {
     const shouldUpdateWorkTime = workTimeManuallyEdited;
@@ -469,12 +731,24 @@ async function updateProjectFromForm() {
       rawValues,
       shouldUpdateWorkTime,
     );
+    const manuallyChangedFields = getManuallyChangedFields(
+      rawValues,
+      normalizedValues,
+    );
     const module = await loadNormalizationModule();
 
-    const projectToSave = {
+    let projectToSave = {
       ...(selectedProject ?? {}),
       ...normalizedValues,
     };
+    projectToSave = withManualProjectFields(
+      projectToSave,
+      manuallyChangedFields,
+    );
+    projectToSave = applyCodenameFromTitleEdit(
+      projectToSave,
+      manuallyChangedFields,
+    );
 
     if (!shouldUpdateWorkTime) {
       delete projectToSave.work_time;
@@ -504,8 +778,13 @@ async function updateProjectFromForm() {
       projects.push(savedProject);
     }
 
-    await chrome.storage.local.set({ projects });
-    existingProjects = projects;
+    const projectsToSave = applySeriesDefaultsToProjects(projects, savedProject);
+    savedProject =
+      projectsToSave.find((project) => project.id === savedProject.id) ??
+      savedProject;
+
+    await chrome.storage.local.set({ projects: projectsToSave });
+    existingProjects = projectsToSave;
     if (activeProjectId === previousProjectId) {
       activeProjectId = projectToSave.id;
     }
@@ -520,6 +799,7 @@ async function updateProjectFromForm() {
     if (shouldUpdateWorkTime) {
       await syncStopwatchFromPopup();
     }
+    return savedProject;
   } catch (error) {
     console.error("Failed to update project from popup form:", error);
   }
@@ -551,17 +831,30 @@ async function syncStopwatchFromPopup() {
   }
 }
 
-function exportProject() {
-  console.log("sending...", selectedProject);
-  if (!selectedProject?.id) {
-    console.warn("Project doesn't have an id");
-    return;
+async function exportProject() {
+  const savedProject = await updateProjectFromForm();
+  if (!savedProject?.id) {
+    throw new Error("Could not save project. Export canceled.");
   }
 
-  chrome.runtime.sendMessage({
-    action: "export-project-data",
-    projectId: selectedProject.id,
-    source: "popup.js",
+  const response = await new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      {
+        action: "export-project-data",
+        projectId: savedProject.id,
+        source: "popup.js",
+      },
+      (result) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(result);
+      },
+    );
   });
+  if (!response?.success) {
+    throw new Error(response?.error || "Export failed. Please try again.");
+  }
 }
 })();

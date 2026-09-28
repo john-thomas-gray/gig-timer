@@ -149,6 +149,48 @@ Audio Description English (US)
   assert.equal(project.runtime, 2427);
 });
 
+test("Mavis composition episodes stay distinct and runtime does not shrink after seeking", () => {
+  const episodes = [
+    { code: "101", project: "224195", task: "17761368", duration: 1917.916 },
+    { code: "102", project: "224316", task: "17768706", duration: 1662.952958 },
+  ];
+  for (const [index, episode] of episodes.entries()) {
+    const url = `https://phelix.pixelogicmedia.com/composition-editor/projects/${episode.project}?taskId=${episode.task}&grid1=spottingCreation`;
+    const title = `Mavis_Season 1_${episode.code}_Episode ${episode.code}_Home Video_Original_Episode_${episode.code}`;
+    for (const position of ["00:59:59:00", "01:07:30:13", "01:31:54:23"]) {
+      const doc = {
+        body: { innerText: `${title}\n${position}\n01:31:54:23\n23.976` },
+        querySelectorAll: (selector) =>
+          selector === "video, audio" ? [{ duration: episode.duration }] : [],
+      };
+      const project = normalizeProjectData(scrapePixelogicTimerDocument(doc, url));
+      assert.equal(project.id, `Mavis: Season 1: Episode ${index + 1}`);
+      assert.equal(project.task_id, episode.task);
+      assert.equal(project.project_id, episode.project);
+      assert.equal(project.runtime, Math.round(episode.duration));
+    }
+    assert.equal(normalizeProjectData({ title }).episode, String(index + 1));
+  }
+});
+
+test("nonzero playback timecodes are not mistaken for full runtime", () => {
+  const [project] = parsePixelogicCompositionAssignmentsText(
+    "Mavis_Season 1_101_Episode 101\n01:07:30:13\n01:31:54:23\n23.976",
+    compositionUrl,
+  );
+  assert.equal(project.runtime, undefined);
+});
+
+test("video duration takes precedence over player counters and handles unloaded media", () => {
+  const doc = {
+    body: { innerText: "Example_Season 1_E001\n00:00:00:00\n00:30:00:00\n23.976" },
+    querySelectorAll: (selector) => selector === "video, audio"
+      ? [{ duration: NaN }, { duration: 1917.916 }]
+      : [],
+  };
+  assert.equal(scrapePixelogicTimerDocument(doc, compositionUrl).runtime, 1918);
+});
+
 test("programmatically injected content scripts do not use static imports", () => {
   const contentScriptFiles = [
     "content/assignments.js",
@@ -175,6 +217,7 @@ test("programmatically injected content scripts do not use static imports", () =
   );
   assert.ok(webAccessibleResources.includes("utils/netflix.js"));
   assert.ok(webAccessibleResources.includes("utils/pixelogic.js"));
+  assert.ok(webAccessibleResources.includes("utils/workplace.js"));
 });
 
 test("manifest content scripts can share one isolated world", () => {
@@ -194,6 +237,39 @@ test("manifest content scripts can share one isolated world", () => {
   );
 });
 
+test("manifest does not inject timer scripts on unrelated sites", () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(new URL("manifest.json", repoRoot), "utf8"),
+  );
+  const contentScriptMatches = manifest.content_scripts.flatMap(
+    (entry) => entry.matches,
+  );
+  const resourceMatches = manifest.web_accessible_resources.flatMap(
+    (entry) => entry.matches,
+  );
+
+  assert.deepEqual(contentScriptMatches, [
+    "https://phelix.pixelogicmedia.com/*",
+    "https://authoring.netflixstudios.com/*",
+    "https://originatorstudio.netflixstudios.com/*",
+  ]);
+  assert.deepEqual(resourceMatches, contentScriptMatches);
+  assert.ok(
+    manifest.host_permissions.includes("https://script.google.com/*"),
+  );
+  assert.ok(
+    manifest.host_permissions.includes("https://script.googleusercontent.com/*"),
+  );
+  assert.equal(
+    manifest.host_permissions.includes("*://*/*"),
+    false,
+  );
+  assert.equal(
+    contentScriptMatches.some((match) => match.includes("ibmaspera.com")),
+    false,
+  );
+});
+
 test("timer content scripts register on composition-editor project pages", () => {
   const stopwatchSource = fs.readFileSync(
     new URL("content/stopwatch.js", repoRoot),
@@ -204,8 +280,8 @@ test("timer content scripts register on composition-editor project pages", () =>
     "utf8",
   );
 
-  assert.match(stopwatchSource, /isTimerPageUrl/);
-  assert.match(workplaceSource, /isProjectMetadataPageUrl/);
+  assert.match(stopwatchSource, /detectWorkplacePage/);
+  assert.match(workplaceSource, /detectWorkplacePage/);
 });
 
 test("composition-editor parsing falls back to URL project metadata", () => {
@@ -302,6 +378,20 @@ Audio Description English (US)
   assert.equal(projects[0].episode, "1");
 });
 
+test("normalization parses raw Pixelogic composition titles into a series project id", () => {
+  const project = normalizeProjectData({
+    episode: undefined,
+    rate: 6,
+    season: undefined,
+    title: "Welcome to Wrexham_Season 5_E0054_Episode 54_Broadcast_Original",
+  });
+
+  assert.equal(project.title, "Welcome to Wrexham");
+  assert.equal(project.season, "5");
+  assert.equal(project.episode, "54");
+  assert.equal(project.id, "Welcome to Wrexham: Season 5: Episode 54");
+});
+
 test("operations-manager task data is scraped into workplace metadata", () => {
   const text = `
 Tasks/Task View
@@ -366,6 +456,53 @@ P2P | [Version 2]
   assert.equal(normalized.date_due, "2026-05-16");
   assert.equal(normalized.date_completed, undefined);
   assert.equal(normalized.date_assigned, undefined);
+});
+
+test("operations-manager client codename normalizes to Apple+", () => {
+  const text = `
+Task Instructions
+
+ALULA - MASTERING US - AUDIO - AUDIO DESCRIPTION -- AD SCRIPT WRITING -- CE6
+
+Input Requirements:
+Example Series: Season 1: Episode 2: Episode 2 (E0002)
+`;
+
+  const project = parsePixelogicOperationsManagerTaskText(
+    text,
+    operationsManagerUrl,
+  );
+  const normalized = normalizeProjectData(project);
+
+  assert.equal(project.client, "Alula");
+  assert.equal(normalized.client, "Apple+");
+});
+
+test("live Alula instructions detect the client without confusing the style guide label", () => {
+  const text = "Task Instructions\nALULA \u2014 AUDIO - AUDIO DESCRIPTION -- AD SCRIPT WRITING\nAdditional Details:\nClient Style Guide\nInput Requirements:\nOutput Requirements:\nMavis: Season 1: Episode 1: Episode 101 (101)";
+  const project = normalizeProjectData(parsePixelogicOperationsManagerTaskText(text, operationsManagerUrl));
+  assert.equal(project.client, "Apple+");
+  assert.equal(project.id, "Mavis: Season 1: Episode 1");
+});
+
+test("operations-manager title parsing keeps colons in the program title", () => {
+  const text = `
+Tasks/Task View
+Input Requirements:
+Betrayal: Secrets and Lies: Season 1: Episode 1: Episode 1 (E0001)
+[OM-1234567 / 7654321]
+`;
+
+  const project = parsePixelogicOperationsManagerTaskText(
+    text,
+    operationsManagerUrl,
+  );
+  const normalized = normalizeProjectData(project);
+
+  assert.equal(project.title, "Betrayal: Secrets and Lies");
+  assert.equal(project.season, "1");
+  assert.equal(project.episode, "1");
+  assert.equal(normalized.id, "Betrayal: Secrets and Lies: Season 1: Episode 1");
 });
 
 test("document text collection pairs Pixelogic input values with nearby labels", () => {

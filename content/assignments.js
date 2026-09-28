@@ -42,7 +42,7 @@ function assignmentsListener(msg, sender, sendResponse) {
   if (msg.action !== "request-assignments-data") return;
 
   (async () => {
-    const { isAssignmentsPage, pixelogic } = await assignmentsContextReady;
+    const { isAssignmentsPage, pixelogic } = await loadAssignmentsContext();
     if (!isAssignmentsPage) {
       sendResponse(undefined);
       return;

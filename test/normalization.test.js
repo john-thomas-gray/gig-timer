@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   calculateInvoiceAmount,
+  normalizeClientInput,
   normalizeDurationInput,
+  normalizeProjectData,
 } from "../web-accessible-resources/normalization.js";
 
 test("runtime popup timecode parses hours, minutes, seconds, and frames", () => {
@@ -24,4 +26,15 @@ test("invoice calculation uses frame-aware runtime precision", () => {
   const runtimeSeconds = normalizeDurationInput("00:00:29:15", 25);
 
   assert.equal(calculateInvoiceAmount(6, runtimeSeconds), 0);
+});
+
+test("client codenames normalize to billing names", () => {
+  assert.equal(normalizeClientInput("Alula"), "Apple+");
+  assert.equal(normalizeClientInput(" ALULA "), "Apple+");
+
+  const project = normalizeProjectData({
+    client: "Alula",
+    title: "Example Series",
+  });
+  assert.equal(project.client, "Apple+");
 });

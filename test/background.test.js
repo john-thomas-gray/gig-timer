@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { parsePixelogicCompositionAssignmentsText } from "../utils/pixelogic.js";
 
 const compositionUrl =
   "https://phelix.pixelogicmedia.com/composition-editor/projects/105667?taskId=13500851&grid1=spottingCreation";
@@ -9,6 +10,12 @@ const compositionWorkplaceUrl =
   "https://phelix.pixelogicmedia.com/composition-editor/projects/188823?taskId=15591854&grid1=spottingCreation";
 const operationsManagerUrl =
   "https://phelix.pixelogicmedia.com/operations-manager/tasks/13500851";
+const manualOperationsManagerUrl =
+  "https://phelix.pixelogicmedia.com/operations-manager/tasks/17761368";
+const mavisEpisodeOneUrl =
+  "https://phelix.pixelogicmedia.com/composition-editor/projects/224195?taskId=17761368&grid1=spottingCreation";
+const mavisEpisodeTwoUrl =
+  "https://phelix.pixelogicmedia.com/composition-editor/projects/224316?taskId=17768706&grid1=spottingCreation";
 const netflixAuthoringUrl =
   "https://authoring.netflixstudios.com/editor?requestRef=dubtext%3Adubtext_script_authoring%3A28fbbe84-bb57-4cf8-b97c-f9e666d6e63d";
 const netflixOriginatorUrl =
@@ -24,6 +31,7 @@ function createChromeMock({
   failProjectReads = false,
   legacyAssignmentSnapshot,
   lastProjectId = "",
+  openTabs = [],
   projects = [],
   tabUrl = compositionUrl,
   urls = {},
@@ -105,6 +113,9 @@ function createChromeMock({
       tabs: {
         async get(tabId) {
           return { id: tabId, url: tabUrl };
+        },
+        async query() {
+          return openTabs;
         },
         async sendMessage(tabId, message) {
           sentMessages.push({ tabId, ...message });
@@ -334,6 +345,273 @@ test("history navigation to a composition-editor project creates the project and
       );
       assertLogMessage(logs, "[Gig Timer] Sending stopwatch init");
       assertLogMessage(logs, "[Gig Timer] Stopwatch init sent");
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("new episodes inherit stored series defaults for the same series", async () => {
+  const mock = createChromeMock({
+    projects: [
+      {
+        client: "FX",
+        episode: "1",
+        genre: "Docuseries",
+        id: "Welcome to Wrexham: Season 5: Episode 1",
+        rate: 12,
+        season: "5",
+        title: "Welcome to Wrexham",
+        work_time: 120,
+      },
+    ],
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.historyStateUpdated.length, 1),
+    );
+
+    mock.listeners.historyStateUpdated[0]({
+      frameId: 0,
+      tabId: 7,
+      url: compositionUrl,
+    });
+
+    await waitFor(() => {
+      assert.equal(mock.storage.projects.length, 2);
+      const newEpisode = mock.storage.projects.find(
+        (project) =>
+          project.id === "Welcome to Wrexham: Season 5: Episode 5",
+      );
+      assert.equal(newEpisode.client, "FX");
+      assert.equal(newEpisode.genre, "Docuseries");
+      assert.equal(newEpisode.rate, 12);
+      assert.equal(newEpisode.invoice_amount, 480);
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("new Pixelogic episodes inherit defaults from raw composition titles", async () => {
+  const mock = createChromeMock({
+    projects: [
+      {
+        client: "FX",
+        episode: undefined,
+        genre: "Docuseries",
+        id: "Welcome to Wrexham_Season 5_E0053_Episode 53_Broadcast_Original",
+        rate: 12,
+        season: undefined,
+        title: "Welcome to Wrexham_Season 5_E0053_Episode 53_Broadcast_Original",
+        work_time: 120,
+      },
+    ],
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.historyStateUpdated.length, 1),
+    );
+
+    mock.listeners.historyStateUpdated[0]({
+      frameId: 0,
+      tabId: 7,
+      url: compositionUrl,
+    });
+
+    await waitFor(() => {
+      assert.equal(mock.storage.projects.length, 2);
+      const newEpisode = mock.storage.projects.find(
+        (project) =>
+          project.id === "Welcome to Wrexham: Season 5: Episode 5",
+      );
+      assert.equal(newEpisode.client, "FX");
+      assert.equal(newEpisode.genre, "Docuseries");
+      assert.equal(newEpisode.rate, 12);
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("new episodes inherit the closest previous rate in the same season", async () => {
+  const mock = createChromeMock({
+    projects: [
+      {
+        episode: "1",
+        id: "Welcome to Wrexham: Season 5: Episode 1",
+        rate: 10,
+        season: "5",
+        title: "Welcome to Wrexham",
+        work_time: 120,
+      },
+      {
+        episode: "4",
+        id: "Welcome to Wrexham: Season 5: Episode 4",
+        rate: 12,
+        season: "5",
+        title: "Welcome to Wrexham",
+        work_time: 120,
+      },
+    ],
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.historyStateUpdated.length, 1),
+    );
+
+    mock.listeners.historyStateUpdated[0]({
+      frameId: 0,
+      tabId: 7,
+      url: compositionUrl,
+    });
+
+    await waitFor(() => {
+      const newEpisode = mock.storage.projects.find(
+        (project) =>
+          project.id === "Welcome to Wrexham: Season 5: Episode 5",
+      );
+      assert.equal(newEpisode.rate, 12);
+      assert.equal(newEpisode.invoice_amount, 480);
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("new episodes do not inherit a stored rate from a different season", async () => {
+  const mock = createChromeMock({
+    projects: [
+      {
+        episode: "1",
+        id: "Welcome to Wrexham: Season 4: Episode 1",
+        rate: 12,
+        season: "4",
+        title: "Welcome to Wrexham",
+        work_time: 120,
+      },
+    ],
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.historyStateUpdated.length, 1),
+    );
+
+    mock.listeners.historyStateUpdated[0]({
+      frameId: 0,
+      tabId: 7,
+      url: compositionUrl,
+    });
+
+    await waitFor(() => {
+      assert.equal(mock.storage.projects.length, 2);
+      const newEpisode = mock.storage.projects.find(
+        (project) =>
+          project.id === "Welcome to Wrexham: Season 5: Episode 5",
+      );
+      assert.equal(newEpisode.rate, 6);
+      assert.equal(newEpisode.invoice_amount, 240);
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("background startup creates projects for already-open composition-editor tabs", async () => {
+  const mock = createChromeMock({
+    openTabs: [{ id: 17, url: compositionUrl }],
+    tabUrl: compositionUrl,
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+
+    await waitFor(() => {
+      assert.deepEqual(
+        mock.sentMessages.map((message) => message.action),
+        ["request-assignments-data", "init-stopwatch"],
+      );
+      assert.equal(mock.storage.projects.length, 1);
+      assert.equal(
+        mock.storage.projects[0].id,
+        "Welcome to Wrexham: Season 5: Episode 5",
+      );
+      assert.equal(
+        mock.storage.lastProjectId,
+        "Welcome to Wrexham: Season 5: Episode 5",
+      );
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("background startup creates projects for already-open Netflix authoring tabs", async () => {
+  const mock = createChromeMock({
+    openTabs: [{ id: 18, url: netflixAuthoringUrl }],
+    tabUrl: netflixAuthoringUrl,
+    workplaceData: {
+      client: "Netflix",
+      contractor: "VSI",
+      id: netflixRequestRef,
+      request_ref: netflixRequestRef,
+      rate: 7,
+      runtime: 1800,
+      title: "Example Series: Season 1: Episode 2",
+      workplace_url: netflixAuthoringUrl,
+    },
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+
+    await waitFor(() => {
+      assert.deepEqual(
+        mock.sentMessages.map((message) => message.action),
+        ["request-workplace-id", "init-stopwatch"],
+      );
+      assert.equal(mock.storage.projects.length, 1);
+      assert.equal(mock.storage.projects[0].request_ref, netflixRequestRef);
+      assert.equal(
+        mock.storage.projects[0].id,
+        "Example Series: Season 1: Episode 2",
+      );
+      assert.equal(
+        mock.storage.lastProjectId,
+        "Example Series: Season 1: Episode 2",
+      );
     });
   } finally {
     console.log = originalConsoleLog;
@@ -587,6 +865,78 @@ test("export project stamps date completed and stores the completed field", asyn
   }
 });
 
+test("export sends the inherited series genre from the saved project and confirms success", async () => {
+  const projectId = "Example Series: Season 1: Episode 2";
+  const mock = createChromeMock({
+    projects: [
+      {
+        id: "Example Series: Season 1: Episode 1",
+        title: "Example Series",
+        genre: "Documentary",
+        season: "1",
+        episode: "1",
+      },
+      { id: projectId, title: "Example Series", season: "1", episode: "2" },
+    ],
+  });
+  const originalFetch = globalThis.fetch;
+  const exported = [];
+  let response;
+  globalThis.chrome = mock.chrome;
+  globalThis.fetch = async (_url, options) => {
+    exported.push(JSON.parse(options.body).projectData);
+    return { ok: true, text: async () => "OK" };
+  };
+
+  try {
+    await importFreshBackground();
+    const keepChannelOpen = mock.listeners.runtimeMessages[0](
+      { action: "export-project-data", projectId, source: "popup.js" },
+      {},
+      (result) => { response = result; },
+    );
+    await waitFor(() => assert.equal(exported.length, 1));
+    assert.equal(exported[0].genre, "Documentary");
+    assert.deepEqual(exported[0], mock.storage.projects[1]);
+    assert.equal(keepChannelOpen, true);
+    await waitFor(() => assert.deepEqual(response, { success: true }));
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete globalThis.chrome;
+  }
+});
+
+test("export reports a spreadsheet write failure to the popup", async () => {
+  const projectId = "Example Series: Season 1: Episode 1";
+  const mock = createChromeMock({
+    projects: [{ id: projectId, title: "Example Series", genre: "Drama" }],
+  });
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  let response;
+  globalThis.chrome = mock.chrome;
+  globalThis.fetch = async () => ({ ok: true, text: async () => "ERROR: Write failed" });
+  console.error = () => {};
+
+  try {
+    await importFreshBackground();
+    const keepChannelOpen = mock.listeners.runtimeMessages[0](
+      { action: "export-project-data", projectId, source: "popup.js" },
+      {},
+      (result) => { response = result; },
+    );
+    assert.equal(keepChannelOpen, true);
+    await waitFor(() => {
+      assert.equal(response?.success, false);
+      assert.match(response.error, /Write failed/);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = originalConsoleError;
+    delete globalThis.chrome;
+  }
+});
+
 test("composition project navigation retries URL fallback metadata until page metadata is available", async () => {
   const mock = createChromeMock({
     assignmentResponses: [[pixelogicFallbackProject], [richPixelogicProject]],
@@ -754,6 +1104,192 @@ test("operations-manager task navigation stores metadata without starting the ti
     delete globalThis.chrome;
   }
 });
+
+test("operations-manager metadata refresh preserves manually edited fields", async () => {
+  const realProjectId = "Real Series: Season 1: Episode 4";
+  const mock = createChromeMock({
+    projects: [
+      {
+        _manual_fields: ["client", "date_due", "genre", "runtime", "title"],
+        client: "Manual Client",
+        contractor: "Pixelogic",
+        date_due: "2026-07-10",
+        episode: "4",
+        genre: "Docuseries",
+        id: realProjectId,
+        rate: 10,
+        runtime: 1800,
+        season: "1",
+        task_id: "17761368",
+        title: "Real Series",
+        workplace_url: manualOperationsManagerUrl,
+        work_time: 120,
+      },
+    ],
+    tabUrl: manualOperationsManagerUrl,
+    workplaceData: {
+      client: "Scraped Client",
+      contractor: "Pixelogic",
+      date_due: "2026-07-01",
+      episode: "4",
+      genre: "Scraped Genre",
+      rate: 6,
+      runtime: 2400,
+      season: "1",
+      task_id: "17761368",
+      title: "Project Blue",
+      workplace_url: manualOperationsManagerUrl,
+    },
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.historyStateUpdated.length, 1),
+    );
+
+    mock.listeners.historyStateUpdated[0]({
+      frameId: 0,
+      tabId: 24,
+      url: manualOperationsManagerUrl,
+    });
+
+    await waitFor(() => {
+      assert.deepEqual(
+        mock.sentMessages.map((message) => message.action),
+        ["request-workplace-id"],
+      );
+      assert.equal(mock.storage.projects.length, 1);
+      assert.equal(mock.storage.projects[0].id, realProjectId);
+      assert.equal(mock.storage.projects[0].title, "Real Series");
+      assert.equal(mock.storage.projects[0].codename, "Project Blue");
+      assert.equal(mock.storage.projects[0].client, "Manual Client");
+      assert.equal(mock.storage.projects[0].genre, "Docuseries");
+      assert.equal(mock.storage.projects[0].runtime, 1800);
+      assert.equal(mock.storage.projects[0].date_due, "2026-07-10");
+      assert.equal(mock.storage.projects[0].work_time, 120);
+      assert.equal(mock.storage.lastProjectId, realProjectId);
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("Mavis episodes keep separate timers while sharing the corrected title and detecting Alula", async () => {
+  const episodeTwo = parsePixelogicCompositionAssignmentsText(
+    "Mavis_Season 1_102_Episode 102_Home Video_Original_Episode_102",
+    mavisEpisodeTwoUrl,
+  )[0];
+  const firstProject = {
+    _manual_fields: ["title", "runtime"],
+    assignment_url: mavisEpisodeOneUrl,
+    client: "Apple+",
+    codename: "Mavis",
+    contractor: "Pixelogic",
+    episode: "1",
+    id: "She's Fine: Season 1: Episode 1",
+    rate: 8,
+    runtime: 1918,
+    season: "1",
+    title: "She's Fine",
+    work_time: 120,
+    workplace_url: manualOperationsManagerUrl,
+  };
+  const secondTaskUrl = "https://phelix.pixelogicmedia.com/operations-manager/tasks/17768706";
+  const mock = createChromeMock({
+    assignmentResponses: [[{ ...episodeTwo, runtime: 1663 }]],
+    projects: [firstProject],
+    tabUrl: mavisEpisodeTwoUrl,
+    workplaceData: {
+      client: "Alula", contractor: "Pixelogic", title: "Mavis",
+      episode: "2", season: "1", task_id: "17768706", workplace_url: secondTaskUrl,
+    },
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+  try {
+    await importFreshBackground();
+    await waitFor(() => assert.equal(mock.listeners.completed.length, 1));
+    mock.chrome.tabs.query = async () => [
+      { id: 21, url: manualOperationsManagerUrl },
+      { id: 22, url: secondTaskUrl },
+    ];
+    mock.chrome.tabs.get = async (id) => ({
+      id, url: id === 22 ? secondTaskUrl : mavisEpisodeTwoUrl,
+    });
+    mock.listeners.completed[0]({ frameId: 0, tabId: 23, url: mavisEpisodeTwoUrl });
+    await waitFor(() => {
+      assert.equal(mock.storage.projects.length, 2);
+      assert.equal(mock.sentMessages.at(-1).action, "init-stopwatch");
+    });
+    assert.deepEqual(mock.storage.projects[0], firstProject);
+    const saved = mock.storage.projects[1];
+    assert.equal(saved.id, "She's Fine: Season 1: Episode 2");
+    assert.equal(saved.client, "Apple+");
+    assert.equal(saved.codename, "Mavis");
+    assert.equal(saved.task_id, "17768706");
+    assert.equal(saved.runtime, 1663);
+    assert.equal(saved.work_time, 0);
+    assert.equal(mock.storage.lastProjectId, saved.id);
+    assert.equal(mock.sentMessages.at(-1).projectId, saved.id);
+    assert.deepEqual(
+      mock.sentMessages.filter((message) => message.action === "request-workplace-id").map((message) => message.tabId),
+      [22],
+    );
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
+for (const codename of [undefined, "Mavis"]) {
+  test(`different Pixelogic tasks cannot merge through ${codename ? "a season-only codename" : "an identical title identifier"}`, async () => {
+    const firstProject = {
+      _manual_fields: codename ? ["title"] : [],
+      assignment_url: mavisEpisodeOneUrl,
+      codename,
+      contractor: "Pixelogic",
+      id: codename ? "She's Fine" : "Mavis",
+      title: codename ? "She's Fine" : "Mavis",
+      season: "1",
+      work_time: 120,
+    };
+    const mock = createChromeMock({
+      projects: [firstProject],
+      tabUrl: mavisEpisodeTwoUrl,
+      assignmentResponses: [[{
+        assignment_url: mavisEpisodeTwoUrl,
+        contractor: "Pixelogic", title: "Mavis", season: "1", runtime: 1663,
+      }]],
+    });
+    const originalConsoleLog = console.log;
+    globalThis.chrome = mock.chrome;
+    console.log = () => {};
+    try {
+      await importFreshBackground();
+      await waitFor(() => assert.equal(mock.listeners.completed.length, 1));
+      for (let visit = 1; visit <= 2; visit += 1) {
+        mock.listeners.completed[0]({ frameId: 0, tabId: 23, url: mavisEpisodeTwoUrl });
+        await waitFor(() => assert.equal(
+          mock.sentMessages.filter((message) => message.action === "init-stopwatch").length, visit,
+        ));
+        assert.equal(mock.storage.projects.length, 2);
+        assert.equal(new Set(mock.storage.projects.map((project) => project.id)).size, 2);
+        assert.equal(mock.storage.projects[0].work_time, 120);
+        assert.equal(mock.storage.projects[1].work_time, 0);
+        assert.equal(mock.sentMessages.at(-1).projectId, mock.storage.projects[1].id);
+      }
+    } finally {
+      console.log = originalConsoleLog;
+      delete globalThis.chrome;
+    }
+  });
+}
 
 test("popup project lookup selects the active workspace project", async () => {
   const mock = createChromeMock({
@@ -1345,9 +1881,236 @@ test("Netflix authoring navigation updates an existing project by request ref", 
   }
 });
 
+test("Netflix authoring refresh preserves manually edited metadata", async () => {
+  const realProjectId = "Real Netflix Series: Season 1: Episode 2";
+  const mock = createChromeMock({
+    projects: [
+      {
+        _manual_fields: ["client", "contractor", "rate", "title"],
+        client: "Manual Client",
+        contractor: "Manual Vendor",
+        id: realProjectId,
+        rate: 11,
+        request_ref: netflixRequestRef,
+        title: "Real Netflix Series",
+        work_time: 120,
+      },
+    ],
+    tabUrl: netflixAuthoringUrl,
+    workplaceData: {
+      client: "Netflix",
+      contractor: "VSI",
+      id: netflixRequestRef,
+      request_ref: netflixRequestRef,
+      rate: 7,
+      runtime: 1800,
+      title: "Internal Codename: Season 1: Episode 2",
+      workplace_url: netflixAuthoringUrl,
+    },
+  });
+  const originalConsoleLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+
+  try {
+    await importFreshBackground();
+    await waitFor(() =>
+      assert.equal(mock.listeners.historyStateUpdated.length, 1),
+    );
+
+    mock.listeners.historyStateUpdated[0]({
+      frameId: 0,
+      tabId: 25,
+      url: netflixAuthoringUrl,
+    });
+
+    await waitFor(() => {
+      assert.equal(mock.storage.projects.length, 1);
+      assert.equal(mock.storage.projects[0].id, realProjectId);
+      assert.equal(mock.storage.projects[0].title, "Real Netflix Series");
+      assert.equal(mock.storage.projects[0].codename, "Internal Codename");
+      assert.equal(mock.storage.projects[0].client, "Manual Client");
+      assert.equal(mock.storage.projects[0].contractor, "Manual Vendor");
+      assert.equal(mock.storage.projects[0].rate, 11);
+      assert.equal(mock.storage.projects[0].runtime, 1800);
+      assert.equal(mock.storage.lastProjectId, realProjectId);
+    });
+  } finally {
+    console.log = originalConsoleLog;
+    delete globalThis.chrome;
+  }
+});
+
 function assertLogMessage(logs, message) {
   assert.ok(
     logs.some(([candidate]) => candidate === message),
     `Expected console log: ${message}`,
   );
 }
+
+for (const [name, tabUrl, workplaceData, assignmentResponses, savedProject] of [
+  ["Pixelogic", compositionUrl, pixelogicFallbackProject, [[richPixelogicProject]], {
+    ...richPixelogicProject,
+    id: "Welcome to Wrexham: Season 5: Episode 54",
+    work_time: 120,
+  }],
+  ["Netflix", netflixAuthoringUrl, {
+    client: "Netflix", contractor: "VSI", rate: 7, runtime: 1800,
+    title: "Netflix series", request_ref: netflixRequestRef,
+    workplace_url: netflixAuthoringUrl,
+  }, undefined, {
+    id: "Netflix series", title: "Netflix series", request_ref: netflixRequestRef,
+    workplace_url: netflixAuthoringUrl, work_time: 120,
+  }],
+]) {
+  test(`${name} configured workplace uses one saved project and initializes once`, async () => {
+    const mock = createChromeMock({
+      tabUrl, workplaceData, assignmentResponses,
+      projects: [savedProject],
+      urls: { workplace: tabUrl, assignments: tabUrl },
+    });
+    const originalLog = console.log;
+    const originalError = console.error;
+    const errors = [];
+    globalThis.chrome = mock.chrome;
+    console.log = () => {};
+    console.error = (...args) => errors.push(args);
+    try {
+      await importFreshBackground();
+      mock.listeners.completed[0]({ frameId: 0, tabId: 30, url: tabUrl });
+      await waitFor(() => assert.ok(mock.sentMessages.some((msg) => msg.action === "init-stopwatch")));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const inits = mock.sentMessages.filter((msg) => msg.action === "init-stopwatch");
+      assert.equal(inits.length, 1);
+      assert.equal(mock.storage.projects.length, 1);
+      const stored = mock.storage.projects.find((project) => project.id === mock.storage.lastProjectId);
+      assert.ok(stored, "lastProjectId must reference a stored project");
+      assert.equal(inits[0].projectId, stored.id);
+      assert.equal(inits[0].storedWorktime, 120);
+      assert.deepEqual(errors, []);
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+      delete globalThis.chrome;
+    }
+  });
+}
+
+test("concurrent elapsed-time saves preserve both Pixelogic and Netflix projects", async () => {
+  const mock = createChromeMock({ projects: [
+    { ...richPixelogicProject, id: "Pixelogic saved", work_time: 60 },
+    { id: "Netflix saved", request_ref: netflixRequestRef, workplace_url: netflixAuthoringUrl, work_time: 90 },
+  ] });
+  const originalLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+  try {
+    await importFreshBackground();
+    for (const [projectId, elapsedTime] of [["Pixelogic saved", 120], ["Netflix saved", 180]]) {
+      mock.listeners.runtimeMessages[0](
+        { action: "store-elapsed-time", projectId, elapsedTime },
+        { tab: { id: 31 } }, () => {},
+      );
+    }
+    await waitFor(() => {
+      assert.equal(mock.storage.projects.find((p) => p.id === "Pixelogic saved").work_time, 120);
+      assert.equal(mock.storage.projects.find((p) => p.id === "Netflix saved").work_time, 180);
+    });
+  } finally {
+    console.log = originalLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("composition fallback restores the existing project and saves its actual identifier atomically", async () => {
+  const existing = { ...richPixelogicProject, id: "Welcome to Wrexham: Season 5: Episode 54", work_time: 150 };
+  const mock = createChromeMock({
+    assignmentResponses: [[pixelogicFallbackProject]],
+    projects: [existing],
+    lastProjectId: pixelogicFallbackProject.id,
+  });
+  const originalLog = console.log;
+  const originalSetTimeout = globalThis.setTimeout;
+  const writes = [];
+  const set = mock.chrome.storage.local.set;
+  mock.chrome.storage.local.set = async (items) => { writes.push(items); await set(items); };
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+  globalThis.setTimeout = (callback, ms) => originalSetTimeout(callback, ms === 500 ? 0 : ms);
+  try {
+    await importFreshBackground();
+    mock.listeners.completed[0]({ frameId: 0, tabId: 32, url: compositionUrl });
+    await waitFor(() => assert.ok(mock.sentMessages.some((msg) => msg.action === "init-stopwatch")));
+    assert.equal(mock.storage.lastProjectId, existing.id);
+    assert.equal(mock.storage.projects.length, 1);
+    assert.equal(mock.storage.projects[0].work_time, 150);
+    assert.equal(mock.sentMessages.at(-1).projectId, existing.id);
+    assert.equal(mock.sentMessages.at(-1).storedWorktime, 150);
+    for (const write of writes) {
+      if (write.lastProjectId) {
+        assert.ok(write.projects?.some((project) => project.id === write.lastProjectId));
+      }
+    }
+  } finally {
+    console.log = originalLog;
+    globalThis.setTimeout = originalSetTimeout;
+    delete globalThis.chrome;
+  }
+});
+
+test("Netflix runtime and elapsed-time updates merge without overwriting one another", async () => {
+  const mock = createChromeMock({
+    tabUrl: netflixAuthoringUrl,
+    projects: [{ id: "Netflix series", request_ref: netflixRequestRef, workplace_url: netflixAuthoringUrl,
+      client: "Netflix", contractor: "VSI", rate: 7, runtime: 1200, work_time: 60 }],
+  });
+  const originalLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+  try {
+    await importFreshBackground();
+    let runtimeResponse;
+    mock.listeners.runtimeMessages[0](
+      { action: "store-netflix-runtime", source: "workplace.js", requestRef: netflixRequestRef,
+        workplaceUrl: netflixAuthoringUrl, runtime: 1800 },
+      { tab: { id: 33 } }, (response) => { runtimeResponse = response; },
+    );
+    mock.listeners.runtimeMessages[0](
+      { action: "store-elapsed-time", projectId: "Netflix series", elapsedTime: 120 },
+      { tab: { id: 33 } }, () => {},
+    );
+    await waitFor(() => {
+      assert.equal(runtimeResponse?.stored, true);
+      assert.equal(mock.storage.projects[0].runtime, 1800);
+      assert.equal(mock.storage.projects[0].work_time, 120);
+      assert.equal(mock.storage.projects[0].invoice_amount, 210);
+      assert.equal(mock.storage.projects[0].hourly_rate, 6300);
+    });
+  } finally {
+    console.log = originalLog;
+    delete globalThis.chrome;
+  }
+});
+
+test("Netflix without metadata never starts the previous Pixelogic project", async () => {
+  const mock = createChromeMock({
+    tabUrl: netflixAuthoringUrl,
+    workplaceData: "__CONTINUE_PAGE__",
+    lastProjectId: "Pixelogic saved",
+    projects: [{ ...richPixelogicProject, id: "Pixelogic saved", work_time: 150 }],
+  });
+  const originalLog = console.log;
+  globalThis.chrome = mock.chrome;
+  console.log = () => {};
+  try {
+    await importFreshBackground();
+    mock.listeners.completed[0]({ frameId: 0, tabId: 34, url: netflixAuthoringUrl });
+    await waitFor(() => assert.ok(mock.sentMessages.some((msg) => msg.action === "request-workplace-id")));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(mock.sentMessages.some((msg) => msg.action === "init-stopwatch"), false);
+    assert.equal(mock.storage.projects.length, 1);
+  } finally {
+    console.log = originalLog;
+    delete globalThis.chrome;
+  }
+});

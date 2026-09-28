@@ -2,6 +2,7 @@
 import {
   buildProjectId,
   normalizeProjectData,
+  parseTitleAndEpisode,
   parseRawProjectId,
 } from "./web-accessible-resources/normalization.js";
 import { exportProjectData } from "./exporters/sheetsExporter.js";
@@ -10,16 +11,13 @@ import {
   calculateInvoiceAmount,
 } from "./web-accessible-resources/normalization.js";
 import {
-  isAssignmentsUrl,
+  getPixelogicProjectIdentity,
   isPixelogicCompositionProjectUrl,
-  isTimerPageUrl,
-  isWorkplaceUrl,
+  isPixelogicOperationsManagerTaskUrl,
   parsePixelogicCompositionAssignmentsText,
 } from "./utils/pixelogic.js";
-import {
-  getNetflixRequestRefFromUrl,
-  isNetflixAuthoringUrl,
-} from "./utils/netflix.js";
+import { getNetflixRequestRefFromUrl } from "./utils/netflix.js";
+import { detectWorkplacePage } from "./utils/workplace.js";
 
 const LOG_PREFIX = "[Gig Timer]";
 const storageCache = { count: 0, urls: {}, lastProjectId: "" };
@@ -40,6 +38,7 @@ const ASSIGNMENTS_CONTENT_FILES = [
 const COMPOSITION_METADATA_RETRY_ATTEMPTS = 6;
 const COMPOSITION_METADATA_RETRY_DELAY_MS = 500;
 
+let projectWriteQueue = Promise.resolve();
 let hasAddedListeners = false;
 const storageCacheReady = initStorageCache().catch((error) => {
   console.error(`${LOG_PREFIX} Failed to initialize storage cache:`, error);
@@ -85,101 +84,46 @@ function addListeners() {
       navigationTimers.delete(tabId);
 
       await storageCacheReady;
-      const assignments = storageCache.urls?.assignments?.trim();
-      const workplace = storageCache.urls?.workplace?.trim();
-      const isAssignmentPage = isAssignmentsUrl(url, assignments);
-      const isWorkplacePage = isWorkplaceUrl(url, workplace);
-      const isCompositionProject = isPixelogicCompositionProjectUrl(url);
-      const isNetflixAuthoringPage = isNetflixAuthoringUrl(url);
-      const shouldShowStopwatch = isTimerPageUrl(url, { workplace });
+      try {
+        const page = detectWorkplacePage(url, storageCache.urls);
+        if (!page.isAssignmentsPage && !page.isProjectMetadataPage) return;
 
-      if (!isAssignmentPage && !isWorkplacePage && !isNetflixAuthoringPage) {
-        return;
-      }
-
-      console.log(`${LOG_PREFIX} Processing timer page navigation`, {
-        isAssignmentPage,
-        isCompositionProject,
-        isNetflixAuthoringPage,
-        isWorkplacePage,
-        shouldShowStopwatch,
-        tabId,
-        url,
-      });
-
-      if (isAssignmentPage) {
-        console.log(`${LOG_PREFIX} Assignment page recognized`, { tabId, url });
-        const projects = isCompositionProject
-          ? await setUpCompositionProjectPage(tabId, url)
-          : await setUpAssignmentsPage(tabId);
-        if (isCompositionProject) {
-          const project = projects?.find((candidate) => candidate?.id);
-          if (project?.id) {
-            const existingProject = await getMatchingProject(project);
-            const projectId =
-              getPreferredProjectId(project, existingProject) ?? project.id;
-            storageCache.lastProjectId = projectId;
-            await chrome.storage.local.set({ lastProjectId: projectId });
-            console.log(
-              `${LOG_PREFIX} Composition project stored; starting stopwatch`,
-              { projectId, tabId },
-            );
-            await initStopwatch(tabId, projectId);
-          } else {
-            console.warn(
-              `${LOG_PREFIX} Composition project recognized but no project metadata was found`,
-              { tabId, url },
-            );
-          }
-        }
-      }
-
-      if (isNetflixAuthoringPage) {
-        console.log(`${LOG_PREFIX} Netflix authoring page recognized`, {
-          tabId,
-          url,
+        console.log(`${LOG_PREFIX} Processing timer page navigation`, {
+          ...page, tabId, url,
         });
-        const project = await getWorkplaceProject("webNavigation", tabId);
-        if (project?.id) {
-          storageCache.lastProjectId = project.id;
-          await chrome.storage.local.set({ lastProjectId: project.id });
-          await upsertProjects(project);
-          await initStopwatch(tabId, project.id);
-        } else {
-          console.warn(
-            `${LOG_PREFIX} Netflix authoring page had no project metadata`,
-            {
-              tabId,
-              url,
-            },
-          );
+        if (page.isAssignmentsPage) {
+          console.log(`${LOG_PREFIX} Assignment page recognized`, { tabId, url });
         }
-      }
+        if (!page.isProjectMetadataPage) {
+          await setUpAssignmentsPage(tabId);
+          return;
+        }
 
-      if (isWorkplacePage) {
-        console.log(`${LOG_PREFIX} Workplace page recognized`, { tabId, url });
-        const project = await getWorkplaceProject("webNavigation", tabId);
-        if (project?.id) {
-          await chrome.storage.local.set({ lastProjectId: project.id });
-          await upsertProjects(project);
-          if (shouldShowStopwatch) {
-            console.log(
-              `${LOG_PREFIX} Workplace project stored; starting stopwatch`,
-              { projectId: project.id, tabId },
-            );
-            await initStopwatch(tabId, project.id);
-          } else {
-            console.log(
-              `${LOG_PREFIX} Workplace project stored without starting stopwatch`,
-              { projectId: project.id, tabId },
-            );
-          }
-        } else {
-          console.warn(`${LOG_PREFIX} Workplace page had no project metadata`, {
-            tabId,
-            url,
+        console.log(
+          `${LOG_PREFIX} ${page.site === "netflix" ? "Netflix authoring" : "Workplace"} page recognized`,
+          { tabId, url },
+        );
+        const project = page.metadataSource === "composition"
+          ? (await setUpCompositionProjectPage(tabId, url))?.find((candidate) => candidate?.id)
+          : await getWorkplaceProject("webNavigation", tabId);
+        if (!project?.id) return;
+
+        // A metadata request can finish after the user has left this page.
+        if ((await chrome.tabs.get(tabId))?.url !== url) return;
+        const savedProject = await saveActiveProject(project);
+        if (page.isTimerPage && savedProject) {
+          console.log(
+            `${LOG_PREFIX} ${page.metadataSource === "composition" ? "Composition" : "Workplace"} project stored; starting stopwatch`,
+            { projectId: savedProject.id, tabId },
+          );
+          await initStopwatch(tabId, savedProject.id);
+        } else if (savedProject) {
+          console.log(`${LOG_PREFIX} Workplace project stored without starting stopwatch`, {
+            projectId: savedProject.id, tabId,
           });
         }
+      } catch (error) {
+        console.error(`${LOG_PREFIX} Timer page setup failed`, error);
       }
     }, DEBOUNCE_MS);
 
@@ -193,6 +137,8 @@ function addListeners() {
   chrome.webNavigation.onReferenceFragmentUpdated?.addListener(
     handleTimerPageNavigation,
   );
+
+  recoverOpenTimerPageTabs(handleTimerPageNavigation);
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg?.action) return;
@@ -238,27 +184,13 @@ function addListeners() {
             requestedProject?.id ??
             getPreferredProjectId(currentProject, existingProject) ??
             storageCache.lastProjectId;
-          const project = currentProject
-            ? mergeProjectData(existingProject ?? {}, {
-                ...currentProject,
-                id: workplaceId,
-              })
-            : existingProject;
-          const invoiceAmount = calculateInvoiceAmount(
-            project?.rate,
-            project?.runtime,
-          );
           if (!workplaceId) {
             throw new Error("Workplace ID not found");
           }
-          storageCache.lastProjectId = workplaceId;
-          await chrome.storage.local.set({ lastProjectId: workplaceId });
-          await upsertProjects({
-            ...(project ?? currentProject ?? {}),
+          await saveActiveProject({
+            ...(requestedProject ? {} : currentProject ?? {}),
             id: workplaceId,
             work_time: workTimeValue,
-            invoice_amount: invoiceAmount,
-            hourly_rate: calculateHourlyRate(invoiceAmount, workTimeValue),
           });
         } catch (e) {
           console.error("Failed to store elapsed time", e);
@@ -314,7 +246,7 @@ function addListeners() {
     if (msg.action === "export-project-data" && msg.source === "popup.js") {
       (async () => {
         const projectData = await getProjects(msg.projectId);
-        if (!projectData) return;
+        if (!projectData) throw new Error("Project not found. Select a saved project and try again.");
 
         const completedProject = normalizeProjectData({
           ...projectData,
@@ -322,11 +254,42 @@ function addListeners() {
         });
         delete completedProject.date_assigned;
 
-        await upsertProjects(completedProject);
-        await exportProjectData(completedProject, sheetsData);
-      })();
+        const savedProjects = await upsertProjects(completedProject);
+        const savedProject = savedProjects.find((project) =>
+          matchesProject(project, completedProject),
+        );
+        if (!savedProject) throw new Error("Project could not be saved for export.");
+        await exportProjectData(savedProject, sheetsData);
+        sendResponse({ success: true });
+      })().catch((error) => {
+        console.error(`${LOG_PREFIX} Failed to export project:`, error);
+        sendResponse({ success: false, error: error.message });
+      });
+      return true;
     }
   });
+}
+
+async function recoverOpenTimerPageTabs(handleTimerPageNavigation) {
+  if (typeof chrome.tabs?.query !== "function") return;
+
+  try {
+    await storageCacheReady;
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs ?? []) {
+      if (!tab?.id || !tab.url) continue;
+      const page = detectWorkplacePage(tab.url, storageCache.urls);
+      if (!page.isAssignmentsPage && !page.isProjectMetadataPage) continue;
+
+      handleTimerPageNavigation({
+        frameId: 0,
+        tabId: tab.id,
+        url: tab.url,
+      });
+    }
+  } catch (error) {
+    console.warn(`${LOG_PREFIX} Failed to recover open timer pages`, error);
+  }
 }
 
 async function withStorageCacheReady(callback) {
@@ -375,23 +338,21 @@ async function persistNetflixRuntime(message, tabId) {
     existingProject?.id;
   if (!projectId) return { stored: false };
 
-  const project = mergeProjectData(existingProject ?? {}, {
+  const project = {
     ...(currentProject ?? {}),
     id: projectId,
     request_ref: requestRef,
     runtime,
     workplace_url: workplaceUrl,
-  });
+  };
 
-  await upsertProjects(project);
-  storageCache.lastProjectId = projectId;
-  await chrome.storage.local.set({ lastProjectId: projectId });
+  const savedProject = await saveActiveProject(project);
   console.log(`${LOG_PREFIX} Netflix runtime stored`, {
     projectId,
     runtime,
   });
 
-  return { projectId, runtime, stored: true };
+  return { projectId: savedProject.id, runtime, stored: true };
 }
 
 async function getMatchingProject(project) {
@@ -413,9 +374,8 @@ async function getStoredProjectValue(key, tabId) {
     if (!id && !project) return undefined;
 
     if (project?.id && id) {
-      await upsertProjects({ ...project, id });
-      storageCache.lastProjectId = id;
-      await chrome.storage.local.set({ lastProjectId: id });
+      const savedProject = await saveActiveProject({ ...project, id });
+      return savedProject?.[key];
     }
 
     const currentProject =
@@ -452,20 +412,8 @@ async function getCurrentWorkspaceProjectId(tabId) {
       "getCurrentWorkspaceProjectId",
       tabId,
     );
-    const existingProject = project
-      ? await getMatchingProject(project)
-      : undefined;
-    const projectId = getPreferredProjectId(project, existingProject);
-
-    if (!projectId) return undefined;
-
-    if (project?.id) {
-      await upsertProjects({ ...project, id: projectId });
-    }
-
-    storageCache.lastProjectId = projectId;
-    await chrome.storage.local.set({ lastProjectId: projectId });
-    return projectId;
+    if (!project?.id) return undefined;
+    return (await saveActiveProject(project))?.id;
   } catch (e) {
     console.error("Failed to resolve current workspace project:", e);
     return undefined;
@@ -473,13 +421,7 @@ async function getCurrentWorkspaceProjectId(tabId) {
 }
 
 function isCurrentWorkspaceUrl(url) {
-  const workplace = storageCache.urls?.workplace?.trim();
-
-  return (
-    isWorkplaceUrl(url, workplace) ||
-    isPixelogicCompositionProjectUrl(url) ||
-    isNetflixAuthoringUrl(url)
-  );
+  return detectWorkplacePage(url, storageCache.urls).isProjectMetadataPage;
 }
 
 async function getWorkplaceProject(calledBy, tabIdOverride) {
@@ -516,20 +458,22 @@ async function getWorkplaceProject(calledBy, tabIdOverride) {
       projectId: project?.id,
       tabId: targetTabId,
     });
-    return project ?? (await getLastProjectFallback());
+    return project;
   } catch (e) {
     console.error(`${calledBy ?? "We"} failed to get workplace project:`, e);
     if (tabIdOverride) {
       try {
         const tab = await chrome.tabs.get(tabIdOverride);
-        if (tab?.url && !isNetflixAuthoringUrl(tab.url)) {
-          return normalizeWorkplaceResponseData(tab.url, tab.url);
-        }
+        const requestRef = getNetflixRequestRefFromUrl(tab?.url);
+        return (await getProjects()).find((project) =>
+          (requestRef && project.request_ref === requestRef) ||
+          (tab?.url && project.workplace_url === tab.url),
+        );
       } catch (tabError) {
         console.error("Fallback tab URL lookup failed:", tabError);
       }
     }
-    return getLastProjectFallback();
+    return tabIdOverride ? undefined : getLastProjectFallback();
   }
 }
 
@@ -563,7 +507,7 @@ async function getLastProjectFallback() {
   if (!storageCache.lastProjectId) return undefined;
 
   const project = await getProjects(storageCache.lastProjectId);
-  return project ?? { id: storageCache.lastProjectId };
+  return project;
 }
 
 async function sendTabMessage(tabId, message, options = {}) {
@@ -635,6 +579,239 @@ function isDefinedProjectValue(value) {
   return true;
 }
 
+function cleanText(value) {
+  if (value === undefined || value === null) return undefined;
+  const cleaned = String(value).replace(/\s+/g, " ").trim();
+  return cleaned || undefined;
+}
+
+const PIXELOGIC_DEFAULT_RATE = 6;
+const MANUAL_PROJECT_FIELDS_KEY = "_manual_fields";
+const PROJECT_CODENAME_KEY = "codename";
+const PROJECT_IDENTITY_FIELDS = new Set(["title", "season", "episode"]);
+
+function numericRate(value) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const number =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^0-9.-]/g, ""));
+
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function isPixelogicDefaultRate(value) {
+  return numericRate(value) === PIXELOGIC_DEFAULT_RATE;
+}
+
+function getManualProjectFields(project) {
+  const fields = project?.[MANUAL_PROJECT_FIELDS_KEY];
+  if (!Array.isArray(fields)) return new Set();
+
+  return new Set(
+    fields
+      .map((field) => cleanText(field))
+      .filter(Boolean),
+  );
+}
+
+function mergeManualProjectFields(existingProject, nextProject) {
+  const merged = new Set([
+    ...getManualProjectFields(existingProject),
+    ...getManualProjectFields(nextProject),
+  ]);
+
+  return [...merged].sort();
+}
+
+function hasManualProjectField(project, key) {
+  return getManualProjectFields(project).has(key);
+}
+
+function hasManualProjectIdentity(project) {
+  const manualFields = getManualProjectFields(project);
+  return [...PROJECT_IDENTITY_FIELDS].some((key) => manualFields.has(key));
+}
+
+function getSeriesDefaultValue(project, key) {
+  if (key === "rate") {
+    return isDefinedProjectValue(project?.rate) ? project.rate : undefined;
+  }
+
+  return cleanText(project?.[key]);
+}
+
+function getSeriesKey(project) {
+  const parsedTitle = parseTitleAndEpisode(project?.title);
+  const parsedId = parseTitleAndEpisode(project?.id);
+  const title =
+    parsedTitle.title ??
+    cleanText(project?.title) ??
+    parsedId.title ??
+    cleanText(project?.id);
+
+  return title?.toLowerCase() ?? "";
+}
+
+function getSeasonKey(project) {
+  const season =
+    cleanText(project?.season) ??
+    parseTitleAndEpisode(project?.id).season ??
+    parseTitleAndEpisode(project?.title).season;
+
+  if (!season) return "";
+  const match = season.match(/\d+/);
+  return match ? String(Number(match[0])) : "";
+}
+
+function getEpisodeNumber(project) {
+  const episode =
+    cleanText(project?.episode) ??
+    parseTitleAndEpisode(project?.id).episode ??
+    parseTitleAndEpisode(project?.title).episode;
+  const match = episode?.match(/\d+/);
+  if (!match) return undefined;
+
+  const number = Number(match[0]);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function getSeriesSeasonKey(project) {
+  const seriesKey = getSeriesKey(project);
+  const seasonKey = getSeasonKey(project);
+  return seriesKey && seasonKey ? `${seriesKey}::${seasonKey}` : "";
+}
+
+function getSeriesDefaults(projects) {
+  const defaultsBySeries = new Map();
+
+  projects.forEach((project) => {
+    const seriesKey = getSeriesKey(project);
+    if (seriesKey) {
+      const existingDefaults = defaultsBySeries.get(seriesKey) ?? {};
+      const nextDefaults = { ...existingDefaults };
+
+      ["client", "genre"].forEach((key) => {
+        if (isDefinedProjectValue(nextDefaults[key])) return;
+
+        const value = getSeriesDefaultValue(project, key);
+        if (isDefinedProjectValue(value)) nextDefaults[key] = value;
+      });
+
+      if (Object.keys(nextDefaults).length > 0) {
+        defaultsBySeries.set(seriesKey, nextDefaults);
+      }
+    }
+  });
+
+  return { defaultsBySeries, rateReferenceProjects: projects };
+}
+
+function getReferenceRateForProject(project, referenceProjects) {
+  const seriesSeasonKey = getSeriesSeasonKey(project);
+  if (!seriesSeasonKey) return undefined;
+
+  const projectEpisode = getEpisodeNumber(project);
+  const candidates = referenceProjects
+    .filter((candidate) => {
+      if (candidate === project) return false;
+      if (candidate.id && project.id && candidate.id === project.id) return false;
+      if (getSeriesSeasonKey(candidate) !== seriesSeasonKey) return false;
+
+      const rate = getSeriesDefaultValue(candidate, "rate");
+      return isDefinedProjectValue(rate) && !isPixelogicDefaultRate(rate);
+    })
+    .map((candidate) => ({
+      episode: getEpisodeNumber(candidate),
+      rate: getSeriesDefaultValue(candidate, "rate"),
+    }));
+
+  if (!candidates.length) return undefined;
+
+  const previousCandidates = Number.isFinite(projectEpisode)
+    ? candidates.filter((candidate) =>
+        Number.isFinite(candidate.episode) && candidate.episode < projectEpisode,
+      )
+    : [];
+  const sourceCandidates = previousCandidates.length
+    ? previousCandidates
+    : candidates;
+
+  sourceCandidates.sort((a, b) => {
+    const aEpisode = Number.isFinite(a.episode)
+      ? a.episode
+      : Number.NEGATIVE_INFINITY;
+    const bEpisode = Number.isFinite(b.episode)
+      ? b.episode
+      : Number.NEGATIVE_INFINITY;
+    return bEpisode - aEpisode;
+  });
+
+  return sourceCandidates[0].rate;
+}
+
+function applySeriesDefaultsToProject(
+  project,
+  seriesDefaults,
+) {
+  const { defaultsBySeries, rateReferenceProjects } = seriesDefaults;
+  const defaults = defaultsBySeries.get(getSeriesKey(project));
+  let updatedProject = project;
+  if (defaults) {
+    Object.keys(defaults).forEach((key) => {
+      if (hasManualProjectField(updatedProject, key)) return;
+
+      if (isDefinedProjectValue(getSeriesDefaultValue(updatedProject, key))) {
+        return;
+      }
+
+      if (!isDefinedProjectValue(defaults[key])) return;
+
+      if (updatedProject === project) updatedProject = { ...project };
+      updatedProject[key] = defaults[key];
+    });
+  }
+
+  const rate = getReferenceRateForProject(
+    updatedProject,
+    rateReferenceProjects,
+  );
+  if (
+    isDefinedProjectValue(rate) &&
+    !hasManualProjectField(updatedProject, "rate") &&
+    (!isDefinedProjectValue(updatedProject.rate) ||
+      isPixelogicDefaultRate(updatedProject.rate))
+  ) {
+    if (updatedProject === project) updatedProject = { ...project };
+    updatedProject.rate = rate;
+  }
+
+  if (updatedProject.rate !== project.rate) {
+    const invoiceAmount = calculateInvoiceAmount(
+      updatedProject.rate,
+      updatedProject.runtime,
+    );
+    if (invoiceAmount !== undefined) {
+      updatedProject.invoice_amount = invoiceAmount;
+
+      const hourlyRate = calculateHourlyRate(
+        invoiceAmount,
+        updatedProject.work_time,
+      );
+      if (hourlyRate !== undefined) updatedProject.hourly_rate = hourlyRate;
+    }
+  }
+
+  return updatedProject;
+}
+
+function applyStoredSeriesDefaults(projects) {
+  const seriesDefaults = getSeriesDefaults(projects);
+  return projects.map((project) =>
+    applySeriesDefaultsToProject(project, seriesDefaults),
+  );
+}
+
 function getPreferredProjectId(nextProject, existingProject) {
   if (
     existingProject?.id &&
@@ -665,12 +842,58 @@ function isNetflixAuthoringProject(project = {}) {
   return String(workplaceUrl ?? "").toLowerCase().includes("netflixstudios.com");
 }
 
+function rememberCodename(merged, nextProject) {
+  const incomingTitle = cleanText(nextProject?.title);
+  const currentTitle = cleanText(merged?.title);
+  if (
+    !incomingTitle ||
+    !currentTitle ||
+    incomingTitle === currentTitle ||
+    isPixelogicFallbackProjectValue(incomingTitle)
+  ) {
+    return;
+  }
+
+  merged[PROJECT_CODENAME_KEY] = incomingTitle;
+}
+
 function mergeProjectData(existingProject, nextProject) {
   const merged = { ...existingProject };
   const enforceNetflixDefaults = isNetflixAuthoringProject(nextProject);
+  const manualFields = getManualProjectFields(existingProject);
+  const manualFieldList = mergeManualProjectFields(existingProject, nextProject);
+  if (manualFieldList.length) {
+    merged[MANUAL_PROJECT_FIELDS_KEY] = manualFieldList;
+  }
 
   Object.keys(nextProject).forEach((key) => {
     if (key === "date_assigned") return;
+    if (key === MANUAL_PROJECT_FIELDS_KEY) return;
+
+    if (key === PROJECT_CODENAME_KEY) {
+      if (isDefinedProjectValue(nextProject[key])) {
+        merged[key] = nextProject[key];
+      }
+      return;
+    }
+
+    if (
+      manualFields.has(key) &&
+      isDefinedProjectValue(nextProject[key])
+    ) {
+      if (key === "title") rememberCodename(merged, nextProject);
+      return;
+    }
+
+    if (
+      key === "id" &&
+      hasManualProjectIdentity(existingProject) &&
+      isDefinedProjectValue(existingProject.id) &&
+      isDefinedProjectValue(nextProject.id)
+    ) {
+      rememberCodename(merged, nextProject);
+      return;
+    }
 
     if (
       enforceNetflixDefaults &&
@@ -713,6 +936,10 @@ function mergeProjectData(existingProject, nextProject) {
     }
   });
 
+  if (hasManualProjectIdentity(merged)) {
+    merged.id = buildProjectId(merged) ?? merged.id;
+  }
+
   const invoiceAmount = calculateInvoiceAmount(merged.rate, merged.runtime);
   if (invoiceAmount !== undefined) {
     merged.invoice_amount = invoiceAmount;
@@ -734,14 +961,92 @@ function todayIsoDate() {
   return `${year}-${month}-${day}`;
 }
 
-async function upsertProjects(projects) {
+function upsertProjects(projects, options = {}) {
+  const write = projectWriteQueue.then(() => writeProjects(projects, options));
+  projectWriteQueue = write.catch(() => {});
+  return write;
+}
+
+async function saveActiveProject(project) {
+  project = await enrichPixelogicCompositionProject(project);
+  const savedProjects = await upsertProjects(project, { activeProject: project });
+  return savedProjects.find((saved) => matchesProject(saved, project));
+}
+
+async function enrichPixelogicCompositionProject(project) {
+  if (
+    project.client ||
+    !isPixelogicCompositionProjectUrl(project.assignment_url) ||
+    typeof chrome.tabs?.query !== "function"
+  ) return project;
+
+  const { taskId } = getPixelogicProjectIdentity(project);
+  if (!taskId) return project;
+
+  try {
+    const tabs = await chrome.tabs.query({});
+    const taskTab = tabs.find((tab) =>
+      isPixelogicOperationsManagerTaskUrl(tab.url) &&
+      getPixelogicProjectIdentity({ workplace_url: tab.url }).taskId === taskId,
+    );
+    if (!taskTab) return project;
+
+    const metadata = await getWorkplaceProject("composition-task-metadata", taskTab.id);
+    if (getPixelogicProjectIdentity(metadata).taskId !== taskId) return project;
+
+    const enriched = { ...project };
+    for (const key of ["client", "date_due", "task_type"]) {
+      if (!isDefinedProjectValue(enriched[key]) && isDefinedProjectValue(metadata[key])) {
+        enriched[key] = metadata[key];
+      }
+    }
+    return enriched;
+  } catch (error) {
+    console.warn(`${LOG_PREFIX} Could not read composition task metadata`, error);
+    return project;
+  }
+}
+
+function applyStoredCodename(project, storedProjects) {
+  const title = cleanText(project.title)?.toLowerCase();
+  if (!title || hasManualProjectField(project, "title")) return project;
+
+  const aliases = storedProjects.filter((stored) =>
+    stored.contractor === project.contractor &&
+    cleanText(stored.codename)?.toLowerCase() === title &&
+    hasManualProjectField(stored, "title") &&
+    isDefinedProjectValue(stored.title),
+  );
+  const titles = new Set(aliases.map((stored) => stored.title));
+  if (titles.size !== 1) return project;
+
+  const mapped = {
+    ...project,
+    title: aliases[0].title,
+    codename: project.title,
+    [MANUAL_PROJECT_FIELDS_KEY]: [...new Set([...getManualProjectFields(project), "title"])],
+  };
+  mapped.id = buildProjectId(mapped);
+  return mapped;
+}
+
+function distinguishPixelogicProjectId(project, projects) {
+  if (!projects.some((stored) => stored.id === project.id)) return project;
+  const { taskId, projectId } = getPixelogicProjectIdentity(project);
+  const qualifier = taskId ? `Task ${taskId}` : projectId ? `Project ${projectId}` : undefined;
+  return qualifier ? { ...project, id: `${project.id} [Pixelogic ${qualifier}]` } : project;
+}
+
+async function writeProjects(projects, { activeProject } = {}) {
   const isSingle = !Array.isArray(projects);
   const projectArray = isSingle ? [projects] : projects;
 
   const currentProjects = (await getProjects()) || [];
   const updatedProjects = [...currentProjects];
+  const currentSeriesDefaults = getSeriesDefaults(currentProjects);
 
-  projectArray.forEach((project) => {
+  projectArray.forEach((rawProject) => {
+    let project = applyStoredCodename(rawProject, updatedProjects);
     if (!project.id) return;
 
     const matchingIndexes = updatedProjects.reduce(
@@ -765,20 +1070,46 @@ async function upsertProjects(projects) {
         .forEach((index) => {
           updatedProjects.splice(index, 1);
         });
-      updatedProjects.splice(insertIndex, 0, mergedProject);
+      updatedProjects.splice(
+        insertIndex, 0, distinguishPixelogicProjectId(mergedProject, updatedProjects),
+      );
     } else {
-      updatedProjects.push(project);
+      project = applySeriesDefaultsToProject(project, currentSeriesDefaults);
+      updatedProjects.push(distinguishPixelogicProjectId(project, updatedProjects));
     }
   });
+  const projectsToSave = applyStoredSeriesDefaults(updatedProjects);
   console.log(`${LOG_PREFIX} Projects upserted`, {
     incomingIds: projectArray.map((project) => project?.id).filter(Boolean),
-    totalProjects: updatedProjects.length,
+    totalProjects: projectsToSave.length,
   });
 
-  await chrome.storage.local.set({ projects: updatedProjects });
+  const previousActiveProject = currentProjects.find(
+    (project) => project.id === storageCache.lastProjectId,
+  );
+  const activeCandidate = activeProject ?? previousActiveProject;
+  const savedActiveProject = activeCandidate && projectsToSave.find(
+    (project) => matchesProject(project, activeCandidate),
+  );
+  const changes = { projects: projectsToSave };
+  if (savedActiveProject) changes.lastProjectId = savedActiveProject.id;
+  await chrome.storage.local.set(changes);
+  if (savedActiveProject) storageCache.lastProjectId = savedActiveProject.id;
+  return projectsToSave;
 }
 
 function matchesProject(existingProject, nextProject) {
+  const existingIdentity = getPixelogicProjectIdentity(existingProject);
+  const nextIdentity = getPixelogicProjectIdentity(nextProject);
+  for (const key of ["taskId", "projectId"]) {
+    if (
+      existingIdentity[key] && nextIdentity[key] &&
+      existingIdentity[key] !== nextIdentity[key]
+    ) return false;
+  }
+  for (const key of ["taskId", "projectId"]) {
+    if (existingIdentity[key] && existingIdentity[key] === nextIdentity[key]) return true;
+  }
   if (existingProject.id && existingProject.id === nextProject.id) return true;
   if (
     existingProject.assignment_url &&
@@ -815,7 +1146,36 @@ function matchesProject(existingProject, nextProject) {
   ) {
     return true;
   }
+  if (matchesStoredCodename(existingProject, nextProject)) return true;
   return false;
+}
+
+function matchesStoredCodename(existingProject, nextProject) {
+  const codename = cleanText(existingProject?.[PROJECT_CODENAME_KEY]);
+  const nextTitle =
+    cleanText(nextProject?.title) ??
+    parseTitleAndEpisode(nextProject?.id).title;
+  if (!codename || !nextTitle || codename.toLowerCase() !== nextTitle.toLowerCase()) {
+    return false;
+  }
+
+  const existingSeason = getSeasonKey(existingProject);
+  const nextSeason = getSeasonKey(nextProject);
+  if (existingSeason && nextSeason && existingSeason !== nextSeason) {
+    return false;
+  }
+
+  const existingEpisode = getEpisodeNumber(existingProject);
+  const nextEpisode = getEpisodeNumber(nextProject);
+  if (
+    Number.isFinite(existingEpisode) &&
+    Number.isFinite(nextEpisode) &&
+    existingEpisode !== nextEpisode
+  ) {
+    return false;
+  }
+
+  return Number.isFinite(existingEpisode) && Number.isFinite(nextEpisode);
 }
 
 async function initStopwatch(tabId, projectId) {
@@ -863,7 +1223,7 @@ async function setUpCompositionProjectPage(tabId, url) {
     attempt <= COMPOSITION_METADATA_RETRY_ATTEMPTS;
     attempt += 1
   ) {
-    projects = (await setUpAssignmentsPage(tabId)) ?? [];
+    projects = (await setUpAssignmentsPage(tabId, { persist: false })) ?? [];
     const project = projects.find((candidate) => candidate?.id);
     const isFallback = isPixelogicFallbackProject(project);
 
@@ -874,7 +1234,7 @@ async function setUpCompositionProjectPage(tabId, url) {
       title: project?.title,
     });
 
-    if (project?.id && !isFallback) return projects;
+    if (project?.id && !isFallback && project.runtime !== undefined) return projects;
 
     if (attempt < COMPOSITION_METADATA_RETRY_ATTEMPTS) {
       await sleep(COMPOSITION_METADATA_RETRY_DELAY_MS);
@@ -895,10 +1255,10 @@ async function setUpCompositionProjectUrlFallback(url) {
   console.warn(`${LOG_PREFIX} Using composition project URL fallback metadata`, {
     url,
   });
-  return formatAndNormalizeAssignmentProjects(fallbackProjects);
+  return formatAndNormalizeAssignmentProjects(fallbackProjects, { persist: false });
 }
 
-async function setUpAssignmentsPage(tabId) {
+async function setUpAssignmentsPage(tabId, options) {
   let response;
   try {
     if (!tabId) return;
@@ -932,11 +1292,11 @@ async function setUpAssignmentsPage(tabId) {
     }
     if (response.type === "RETURN_PIXELLOGIC_ASSIGNMENTS_DATA") {
       return await formatAndNormalizeAssignmentProjects(
-        response.payload.projects,
+        response.payload.projects, options,
       );
     }
     if (response.type === "RETURN_W2UI_DATA") {
-      return await formatAndNormalizeAssignmentData(response.payload.snapshot);
+      return await formatAndNormalizeAssignmentData(response.payload.snapshot, options);
     }
   } catch (e) {
     console.warn("Failed to send message:", e);
@@ -944,7 +1304,7 @@ async function setUpAssignmentsPage(tabId) {
   }
 }
 
-async function formatAndNormalizeAssignmentProjects(projects) {
+async function formatAndNormalizeAssignmentProjects(projects, { persist = true } = {}) {
   try {
     if (!Array.isArray(projects)) {
       throw new Error("Invalid Pixelogic assignment data shape");
@@ -957,7 +1317,7 @@ async function formatAndNormalizeAssignmentProjects(projects) {
       count: normalizedProjects.length,
       ids: normalizedProjects.map((project) => project.id).filter(Boolean),
     });
-    await upsertProjects(normalizedProjects);
+    if (persist) await upsertProjects(normalizedProjects);
     return normalizedProjects;
   } catch (e) {
     console.error("Failed to handle Pixelogic assignment data:", e);
@@ -965,13 +1325,13 @@ async function formatAndNormalizeAssignmentProjects(projects) {
   }
 }
 
-async function formatAndNormalizeAssignmentData(snapshot) {
+async function formatAndNormalizeAssignmentData(snapshot, { persist = true } = {}) {
   try {
     const newProject = parseAssignmentData(snapshot);
     const normalizedProject = newProject.map((project) =>
       normalizeProjectData(project),
     );
-    await upsertProjects(normalizedProject);
+    if (persist) await upsertProjects(normalizedProject);
     return normalizedProject;
   } catch (e) {
     console.error("Failed to handle assignment snapshot:", e);

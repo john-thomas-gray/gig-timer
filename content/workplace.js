@@ -6,6 +6,7 @@ const CONTINUE_PAGE_TEXT =
   "We detected that you recently had an open session for this assignment.";
 let pixelogicModulePromise;
 let netflixModulePromise;
+let workplaceModulePromise;
 const LOG_PREFIX = "[Gig Timer]";
 
 function loadPixelogicModule() {
@@ -24,6 +25,8 @@ const NETFLIX_CONTRACTOR_DEFAULTS = {
   rate: 7,
 };
 const PIXELOGIC_CONTRACTOR_DEFAULT = "Pixelogic";
+const PIXELOGIC_METADATA_POLL_INTERVAL_MS = 250;
+const PIXELOGIC_METADATA_WAIT_ATTEMPTS = 12;
 const NETFLIX_AUTHORING_HOST = "netflixstudios.com";
 const NETFLIX_TITLE_POLL_INTERVAL_MS = 250;
 const NETFLIX_TITLE_WAIT_TIMEOUT_MS = 3000;
@@ -60,7 +63,8 @@ function workplaceListener(msg, sender, sendResponse) {
       console.log(`${LOG_PREFIX} Workplace metadata requested`, {
         url: window.location.href,
       });
-      const context = await workplaceContextReady;
+      await workplaceContextReady;
+      const context = await loadWorkplaceContext();
       if (!context.isProjectMetadataPage) {
         sendResponse({ data: undefined });
         return;
@@ -83,33 +87,40 @@ function workplaceListener(msg, sender, sendResponse) {
 }
 
 async function loadWorkplaceContext() {
-  const [pixelogic, netflix] = await Promise.all([
+  workplaceModulePromise ??= import(chrome.runtime.getURL("utils/workplace.js"));
+  const [pixelogic, netflix, { detectWorkplacePage }] = await Promise.all([
     loadPixelogicModule(),
     loadNetflixModule(),
+    workplaceModulePromise,
   ]);
   const { urls = {} } = await chrome.storage.local.get("urls");
-  const workplace = urls.workplace?.trim();
-  const isProjectMetadataPage =
-    pixelogic.isProjectMetadataPageUrl(window.location.href, { workplace }) ||
-    netflix.isNetflixAuthoringUrl(window.location.href);
-
-  return { isProjectMetadataPage, netflix, pixelogic };
+  return { ...detectWorkplacePage(window.location.href, urls), netflix, pixelogic };
 }
 
 async function getWorkplaceData(context) {
-  const { netflix, pixelogic } = context ?? (await loadWorkplaceContext());
+  const { site, pixelogic } = context ?? (await loadWorkplaceContext());
+
+  if (site === "netflix") {
+    console.log(`${LOG_PREFIX} Netflix authoring page detected`);
+    return getNetflixProjectData();
+  }
 
   if (isContinuePage()) {
     console.log(`${LOG_PREFIX} Continue page detected`);
     return "__CONTINUE_PAGE__";
   }
-  const pixelogicProject = pixelogic.scrapePixelogicTimerDocument(
-    document,
-    window.location.href,
-  );
+  const isPixelogicCompositionProject =
+    pixelogic.isPixelogicCompositionProjectUrl(window.location.href);
+  const isPixelogicOperationsManagerTask =
+    pixelogic.isPixelogicOperationsManagerTaskUrl(window.location.href);
+  const pixelogicProject = isPixelogicCompositionProject
+    || isPixelogicOperationsManagerTask
+    ? await waitForPixelogicProject(pixelogic, isPixelogicCompositionProject)
+    : pixelogic.scrapePixelogicTimerDocument(document, window.location.href);
+
   if (
-    pixelogic.isPixelogicCompositionProjectUrl(window.location.href) ||
-    pixelogic.isPixelogicOperationsManagerTaskUrl(window.location.href)
+    isPixelogicCompositionProject ||
+    isPixelogicOperationsManagerTask
   ) {
     console.log(`${LOG_PREFIX} Pixelogic timer metadata scraped`, {
       id: pixelogicProject?.id,
@@ -127,12 +138,46 @@ async function getWorkplaceData(context) {
     return pixelogicProject;
   }
 
-  if (netflix.isNetflixAuthoringUrl(window.location.href)) {
-    console.log(`${LOG_PREFIX} Netflix authoring page detected`);
-    return getNetflixProjectData();
-  }
   console.log(`${LOG_PREFIX} Falling back to legacy project metadata`);
   return getLegacyProjectData();
+}
+
+async function waitForPixelogicProject(pixelogic, isComposition) {
+  const url = window.location.href;
+  const isReady = (project) =>
+    project?.title &&
+    !isPixelogicFallbackProject(project) &&
+    (isComposition ? project.runtime !== undefined : Boolean(project.client));
+  let project = pixelogic.scrapePixelogicTimerDocument(
+    document,
+    url,
+  );
+
+  if (isReady(project)) return project;
+
+  for (
+    let attempt = 1;
+    attempt <= PIXELOGIC_METADATA_WAIT_ATTEMPTS;
+    attempt += 1
+  ) {
+    await sleep(PIXELOGIC_METADATA_POLL_INTERVAL_MS);
+    if (window.location.href !== url) return undefined;
+    const nextProject = pixelogic.scrapePixelogicTimerDocument(
+      document,
+      url,
+    );
+
+    if (isReady(nextProject)) return nextProject;
+    project = nextProject ?? project;
+  }
+
+  return project;
+}
+
+function isPixelogicFallbackProject(project) {
+  return /^Pixelogic (?:Project|Task) \d+$/i.test(
+    String(project?.title ?? "").trim(),
+  );
 }
 
 function isContinuePage() {

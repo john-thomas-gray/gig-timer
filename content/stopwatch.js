@@ -20,8 +20,7 @@ let isIdle = false;
 let isManualPause = false;
 let isMonitoringUserActions = false;
 let activeProjectId;
-let pixelogicModulePromise;
-let netflixModulePromise;
+let workplaceModulePromise;
 
 const LOG_PREFIX = "[Gig Timer]";
 const IDLE_THRESHOLD_SECONDS = 3 * 60;
@@ -29,14 +28,9 @@ let lastActionAt = Date.now();
 
 const formatTimestamp = (ms) => new Date(ms).toLocaleTimeString();
 
-function loadPixelogicModule() {
-  pixelogicModulePromise ??= import(chrome.runtime.getURL("utils/pixelogic.js"));
-  return pixelogicModulePromise;
-}
-
-function loadNetflixModule() {
-  netflixModulePromise ??= import(chrome.runtime.getURL("utils/netflix.js"));
-  return netflixModulePromise;
+function loadWorkplaceModule() {
+  workplaceModulePromise ??= import(chrome.runtime.getURL("utils/workplace.js"));
+  return workplaceModulePromise;
 }
 
 const stopwatchContextReady = loadStopwatchContext();
@@ -52,17 +46,9 @@ stopwatchContextReady
   });
 
 async function loadStopwatchContext() {
-  const [pixelogic, netflix] = await Promise.all([
-    loadPixelogicModule(),
-    loadNetflixModule(),
-  ]);
+  const { detectWorkplacePage } = await loadWorkplaceModule();
   const { urls = {} } = await chrome.storage.local.get("urls");
-  const workplace = urls.workplace?.trim();
-  const isTimerPage =
-    pixelogic.isTimerPageUrl(window.location.href, { workplace }) ||
-    netflix.isNetflixAuthoringUrl(window.location.href);
-
-  return { isTimerPage };
+  return detectWorkplacePage(window.location.href, urls);
 }
 
 function stopwatchListener(msg, sender, sendResponse) {

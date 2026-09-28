@@ -74,6 +74,22 @@ export function getPipelineUrlDefaults() {
   return { ...DEFAULT_PIPELINE_URLS };
 }
 
+export function detectPixelogicPage(url, configuredUrls = {}) {
+  if (parseUrl(url)?.hostname !== PIXELOGIC_HOST) return undefined;
+  const isCompositionProject = isPixelogicCompositionProjectUrl(url);
+  const isCompositionEditor = isPixelogicCompositionEditorUrl(url);
+  const isTask = isPixelogicOperationsManagerTaskUrl(url);
+  const isLegacyWorkplace =
+    !isCompositionEditor && isWorkplaceUrl(url, configuredUrls.workplace?.trim());
+  return {
+    site: "pixelogic",
+    isAssignmentsPage: isAssignmentsUrl(url, configuredUrls.assignments?.trim()),
+    isProjectMetadataPage: isCompositionProject || isTask || isLegacyWorkplace,
+    isTimerPage: isCompositionProject || (!isTask && isLegacyWorkplace),
+    metadataSource: isCompositionProject ? "composition" : "workplace",
+  };
+}
+
 export function isAssignmentsUrl(url, configuredUrl) {
   return matchesPipelineUrl(url, configuredUrl, DEFAULT_PIPELINE_URLS.assignments);
 }
@@ -185,8 +201,7 @@ export function parsePixelogicCompositionAssignmentsText(text, url) {
     return fallbackProject ? [fallbackProject] : [];
   }
 
-  const { startTimecode, endTimecode, frameRate } =
-    findCompositionTiming(lines);
+  const { frameRate, runtime } = findCompositionTiming(lines);
   const taskId = getTaskIdFromUrl(url);
   const projectId = getProjectIdFromCompositionUrl(url);
   const asset = findFirstAssetReference(text);
@@ -196,14 +211,12 @@ export function parsePixelogicCompositionAssignmentsText(text, url) {
     assignment_url: url,
     asset_id: asset?.assetId,
     asset_version_id: asset?.versionId,
+    client: findClient(text),
     episode: titleParts.episode,
     frame_rate: frameRate,
     language,
     project_id: projectId,
-    runtime:
-      startTimecode && endTimecode
-        ? parseTimecodeDuration(startTimecode, endTimecode, frameRate)
-        : undefined,
+    runtime,
     season: titleParts.season,
     task_id: taskId,
     title: titleParts.title,
@@ -267,9 +280,7 @@ export function scrapePixelogicCompositionAssignmentsDocument(
   const runtime = getMediaRuntime(doc);
 
   if (runtime !== undefined) {
-    return projects.map((project) =>
-      project.runtime === undefined ? { ...project, runtime } : project,
-    );
+    return projects.map((project) => ({ ...project, runtime }));
   }
 
   return projects;
@@ -420,7 +431,7 @@ function parsePixelogicTitle(rawTitle) {
   if (!source) return undefined;
 
   const underscoreMatch = source.match(
-    /^(.*?)_Season\s*0*(\d+)(?:_E0*\d+)?(?:_Episode\s*0*(\d+))?/i,
+    /^(.*?)_Season\s*0*(\d+)(?:_(?:E)?0*\d+)?(?:_Episode\s*0*(\d+))?/i,
   );
   if (underscoreMatch) {
     const episodeCode = findEpisodeCode(source);
@@ -432,7 +443,7 @@ function parsePixelogicTitle(rawTitle) {
   }
 
   const colonMatch = source.match(
-    /([^:\n]+):\s*Season\s*0*(\d+)\s*:\s*Episode\s*0*(\d+)/i,
+    /^(.*?):\s*Season\s*0*(\d+)\s*:\s*Episode\s*0*(\d+)/i,
   );
   if (colonMatch) {
     return compactObject({
@@ -468,45 +479,31 @@ function cleanTitle(value) {
 }
 
 function findCompositionTiming(lines) {
-  const timecodeIndexes = [];
-  lines.forEach((line, index) => {
-    if (/^\d{2}:\d{2}:\d{2}:\d{2}$/.test(line)) {
-      timecodeIndexes.push(index);
-    }
-  });
-
-  const startIndex = timecodeIndexes[0];
-  const endIndex = timecodeIndexes[1];
   const frameRate = lines.find((line) => /^\d{2,3}\.\d{3}$/.test(line));
-
-  return {
-    endTimecode: endIndex === undefined ? undefined : lines[endIndex],
-    frameRate,
-    startTimecode: startIndex === undefined ? undefined : lines[startIndex],
-  };
-}
-
-function parseTimecodeDuration(startTimecode, endTimecode, frameRate) {
-  const fps = Number(frameRate);
-  const startSeconds = timecodeToSeconds(startTimecode, fps);
-  const endSeconds = timecodeToSeconds(endTimecode, fps);
-  if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds)) {
-    return undefined;
+  const timecodes = lines.filter((line) => /^\d{2}:\d{2}:\d{2}:\d{2}$/.test(line));
+  let runtime;
+  // These counters show playback position and end, not the media's start and end.
+  if (timecodes[0] === "00:00:00:00" && timecodes[1]) {
+    const [hours, minutes, seconds, frames] = timecodes[1].split(":").map(Number);
+    runtime = normalizeRuntimeSeconds(
+      hours * 3600 + minutes * 60 + seconds + frames / (Number(frameRate) || 24),
+    );
   }
-
-  return Math.max(Math.round(endSeconds - startSeconds), 0);
+  return { frameRate, runtime };
 }
 
 function getMediaRuntime(doc) {
   const mediaElements = doc.querySelectorAll?.("video, audio") ?? [];
 
   for (const element of mediaElements) {
-    const runtime = normalizeRuntimeSeconds(
-      element.duration ??
-        element.getAttribute?.("duration") ??
-        element.getAttribute?.("data-duration"),
-    );
-    if (runtime !== undefined) return runtime;
+    for (const value of [
+      element.duration,
+      element.getAttribute?.("duration"),
+      element.getAttribute?.("data-duration"),
+    ]) {
+      const runtime = normalizeRuntimeSeconds(value);
+      if (runtime !== undefined) return runtime;
+    }
   }
 
   return undefined;
@@ -517,17 +514,6 @@ function normalizeRuntimeSeconds(value) {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
   return Math.round(seconds);
-}
-
-function timecodeToSeconds(timecode, fps) {
-  const parts = timecode.split(":").map(Number);
-  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) {
-    return undefined;
-  }
-
-  const [hours, minutes, seconds, frames] = parts;
-  const frameSeconds = Number.isFinite(fps) && fps > 0 ? frames / fps : 0;
-  return hours * 3600 + minutes * 60 + seconds + frameSeconds;
 }
 
 function findFirstAssetReference(text) {
@@ -555,7 +541,10 @@ function findLabelValue(lines, label) {
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     const normalizedLine = normalizeLabel(line);
-    if (!normalizedLine.startsWith(normalizedLabel)) continue;
+    if (
+      normalizedLine !== normalizedLabel &&
+      !line.toLowerCase().startsWith(`${normalizedLabel}:`)
+    ) continue;
 
     const inlineValue = cleanString(line.replace(/^[^:]+:\s*/, ""));
     if (
@@ -577,10 +566,12 @@ function findLabelValue(lines, label) {
 }
 
 function findClient(text) {
-  const taskInstructions = cleanString(
-    text.split(/Task Instructions/i)[1] ?? text,
-  );
-  const match = taskInstructions?.match(/^([A-Z][A-Z0-9 &'./]+?)\s+[-–—]/);
+  const lines = toLines(text);
+  const labeledClient = findLabelValue(lines, "Client");
+  if (labeledClient) return toDisplayName(labeledClient);
+
+  const taskInstructions = cleanString(text.split(/Task Instructions\s*:?/i)[1]);
+  const match = taskInstructions?.match(/^([A-Z][A-Z0-9 &'./+]+?)\s*[-–—]/i);
   if (!match) return undefined;
 
   return toDisplayName(match[1]);
@@ -619,6 +610,20 @@ function getProjectIdFromCompositionUrl(url) {
     getCompositionProjectIdFromPath(parsed?.pathname) ??
     getCompositionProjectIdFromPath(getHashRouteUrl(parsed)?.pathname)
   );
+}
+
+export function getPixelogicProjectIdentity(project) {
+  const urls = [project?.assignment_url, project?.workplace_url].filter(
+    (url) => parseUrl(url)?.hostname === PIXELOGIC_HOST,
+  );
+  if (!urls.length && project?.contractor !== "Pixelogic") return {};
+
+  return {
+    taskId: cleanString(project.task_id) ?? urls.map(getTaskIdFromUrl).find(Boolean),
+    projectId:
+      cleanString(project.project_id) ??
+      urls.map(getProjectIdFromCompositionUrl).find(Boolean),
+  };
 }
 
 function buildWorkplaceUrlFromTaskId(taskId) {
